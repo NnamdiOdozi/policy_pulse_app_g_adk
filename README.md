@@ -2,17 +2,21 @@
 
 This repository contains sample code that will allow you to learn the features of [Google ADK](https://google.github.io/adk-docs/) and how to use it.
 
-You will learn the following through the course of the steps in this repo
+## Learning Objectives
 
-1. How to create a basic app using ADK
-2. How is ADK different from GenAI SDK
-3. How to do define and call tools using ADK
-4. How to use the advanced features of ADK such as session, state, memory
-5. How to deploy an ADK app to a cloud runtime
-6. Agent workflows
-7. Multi-agent interactions
+Through the course of the steps in this repository, you will learn:
+
+1. **01_basic_agents**: How to create a basic agent using ADK.
+2. [wip] How ADK is different from the GenAI SDK (Upcoming)
+3. [wip] How to define and call tools using ADK (Covered progressively, starting with exercises in 01_basic_agents)
+4. [wip] How to use advanced ADK features such as session, state, and memory (Upcoming)
+5. [wip] How to deploy an ADK app to a cloud runtime (Upcoming)
+6. [wip] Agent workflows (Upcoming)
+7. [wip] Multi-agent interactions (Upcoming)
 
 ## Getting started
+
+This repository is structured into sequential steps, each in its own directory (e.g., `01_basic_agents`, `02_another_step`, etc.).
 
 To get started with this repository:
 
@@ -45,14 +49,25 @@ To get started with this repository:
 4. Go to the step you'd like to execute
 
     ```shell
-    cd step01-basic_agent
+    cd 01_basic_agents
     ```
+
+    Each step directory contains its own `README.md` with specific instructions and explanations for that agent.
 
 5. Run the ADK server
 
     ```shell
     adk web
     ```
+
+    This will start a local server (usually at `http://localhost:8000`). Open this URL in your web browser to interact with the agent for that step.
+
+## Repository Structure
+
+* **/01_basic_agents**: Learn the fundamentals of creating and running a simple ADK agent. The `README.md` in this directory includes exercises for adding tools.
+* **(More steps will be added here as they are developed)**
+
+Follow the `README.md` file within each step's directory for detailed guidance.
 
 ## Creating your own agent
 
