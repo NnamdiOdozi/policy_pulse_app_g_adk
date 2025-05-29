@@ -7,12 +7,12 @@ This repository contains sample code that will allow you to learn the features o
 Through the course of the steps in this repository, you will learn:
 
 1. **01_basic_agents**: How to create a basic agent using ADK.
-2. [wip] How ADK is different from the GenAI SDK (Upcoming)
-3. [wip] How to define and call tools using ADK (Covered progressively, starting with exercises in 01_basic_agents)
-4. [wip] How to use advanced ADK features such as session, state, and memory (Upcoming)
-5. [wip] How to deploy an ADK app to a cloud runtime (Upcoming)
-6. [wip] Agent workflows (Upcoming)
-7. [wip] Multi-agent interactions (Upcoming)
+2. How ADK is different from the GenAI SDK (Upcoming)
+3. How to define and call tools using ADK (Covered progressively, starting with exercises in 01_basic_agents)
+4. How to use advanced ADK features such as session, state, and memory (Upcoming)
+5. How to deploy an ADK app to a cloud runtime (Upcoming)
+6. Agent workflows (Upcoming)
+7. Multi-agent interactions (Upcoming)
 
 ## Getting started
 
