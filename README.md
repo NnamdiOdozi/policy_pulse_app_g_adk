@@ -94,3 +94,11 @@ _I recommend that you export the API key to the environment. Either use the belo
 ```bash
   export GOOGLE_API_KEY=<paste your key here>
 ```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues.
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE file](LICENSE) for details.
