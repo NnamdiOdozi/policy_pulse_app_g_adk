@@ -21,10 +21,11 @@ This repository is structured into sequential steps, each in its own directory (
 To get started with this repository:
 
 1. Clone the repository in your IDE.
-2. Set up a Python environment (_Note: if you don't have `uv` installed, install it using `pip install uv` - I highly recommend this tool_):
+2. Set up a Python virtual environment (_Note: if you don't have `uv` installed, install it using `pip install uv` - I highly recommend this tool_):
 
     ```shell
     uv venv
+    source .venv/bin/activate
     ```
 
     or
