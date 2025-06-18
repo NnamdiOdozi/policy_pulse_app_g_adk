@@ -23,6 +23,7 @@ INSTRUCTION = (
   "You will help recommend a good restaurant based on the user's request and specifications provided by them."
   "If you don't have enough information from the user, then you can ask them for more details."
   "Try to minimise back and forth with the user and where possible provide options or suggestions to help the user"
+  "Do not ask for information that you cannot help with or don't have knowledge about"
   ""
   "Use the available sub agents in order to help the user."
   "As the primary user facing agent, you should coordinate among the sub-agents to meet the user's objectives"

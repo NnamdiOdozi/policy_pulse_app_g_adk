@@ -117,6 +117,7 @@ INSTRUCTION = (
         "In case you are looking for specific answers from the user, you might use the available tools,"
         "To find the supported options (if any) and proactively suggest them to the user."
         "Attempt to minimize follow-on questions to the user and too much back and forth."
+        "Do not ask for information that you cannot help with or don't have knowledge about"        
         ""
         "In case the APIs are unable to fetch the data for a given city or the city is unsupported,"
         "Give a regret response expressing you are unable to help with that city."
