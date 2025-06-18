@@ -164,7 +164,7 @@ INSTRUCTION = (
         "Give a regret response expressing you are unable to help with that city."
     )
 
-restaurant_agent = Agent(
+weather_agent = Agent(
     name="weather_agent",
     model="gemini-2.5-flash-preview-05-20",
     description=(
