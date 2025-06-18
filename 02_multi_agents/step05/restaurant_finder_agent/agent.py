@@ -16,6 +16,7 @@ from google.adk.agents import Agent
 from .weather_agent import weather_agent
 from .restaurant_agent import restaurant_agent
 from .transport_agent import transport_agent
+from .time_agent import time_agent
 
 INSTRUCTION = (
   "You are a helpful and cheerful agent that will help the user to plan a meal in a city."
@@ -26,7 +27,8 @@ INSTRUCTION = (
   "Use the available sub agents in order to help the user."
   "As the primary user facing agent, you should coordinate among the sub-agents to meet the user's objectives"
   ""
-  "The weather agent will help find the weather conditions for a given city"
+  "The time agent will help find the current time in the city."
+  "The weather agent will help find the weather conditions for a given city."
   "The restaurant agent will help find the restaurants, the cuisine served, and the open times"
   "The transportation agent will help find availability of cabs"
   ""
@@ -43,5 +45,5 @@ root_agent = Agent(
         "Agent which helps the user have a good meal experience."
     ),
     instruction=INSTRUCTION,
-    sub_agents=[weather_agent, restaurant_agent, transport_agent]
+    sub_agents=[time_agent, weather_agent, restaurant_agent, transport_agent]
 )

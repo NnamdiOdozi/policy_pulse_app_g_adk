@@ -12,48 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import datetime
-from zoneinfo import ZoneInfo
 from google.adk.agents import Agent
 
-def get_current_time(city: str) -> dict:
-    """Returns the current time in a specified city.
-
-    Args:
-        city (str): The name of the city for which to retrieve the current time.
-
-    Returns:
-        dict: status and result or error msg.
-    """
-    print(f"--- Tool: get_current_time called for city: {city} ---") # Log tool execution
-    city_normalized = city.lower().replace(" ", "")
-
-    # Mapping of cities to their IANA timezone identifiers
-    city_timezones = {
-        "newyork": "America/New_York",
-        "london": "Europe/London",
-        "tokyo": "Asia/Tokyo",
-        "paris": "Europe/Paris",
-        "berlin": "Europe/Berlin",
-        "sydney": "Australia/Sydney",
-        "delhi": "Asia/Kolkata",
-        "bengaluru": "Asia/Kolkata",
-    }
-
-    if city_normalized not in city_timezones:
-        return {
-            "status": "error",
-            "error_message": f"Sorry, I don't have timezone information for '{city}'.",
-        }
-
-    tz_identifier = city_timezones[city_normalized]
-    tz = ZoneInfo(tz_identifier)
-    now = datetime.datetime.now(tz)
-    report = (
-        f'The current time in {city} is {now.strftime("%Y-%m-%d %H:%M:%S %Z%z")}'
-    )
-    return {"status": "success", "report": report}
-
+# Note: get_current_time function has been moved to time_agent/agent.py
 
 def get_weather_forecast(city: str, time_str: str) -> dict:
     """
@@ -154,22 +115,21 @@ def get_weather_forecast(city: str, time_str: str) -> dict:
 
 
 INSTRUCTION = (
-        "You are a location information agent."
-        "You will help provide the user with information related to the time and weather in a city."
-        "The following tools will help you with answering the requests"
-        " - get_current_time(): use this to get the current local time for any city"
-        " - get_weather_forecast(): use this to find the weather in any city at a specified time of day"
+        "You are a weather information agent."
+        "You will help provide the user with weather forecast information for a specified city and time."
+        "The following tool will help you with answering the requests:"
+        " - get_weather_forecast(): use this to find the weather in any city at a specified time of day."
         ""
-        "In case the APIs are unable to fetch the data for a given city or the city is unsupported,"
-        "Give a regret response expressing you are unable to help with that city."
+        "If the user's request is incomplete, ask for the city and time."
+        "In case the city or time is unsupported by the forecast data, give a regret response."
     )
 
 weather_agent = Agent(
     name="weather_agent",
     model="gemini-2.5-flash-preview-05-20",
     description=(
-        "Agent which helps find the weather for a given time in a given city."
+        "Agent which provides weather forecast information for a given city and time."
     ),
     instruction=INSTRUCTION,
-    tools=[get_current_time, get_weather_forecast]
+    tools=[get_weather_forecast]
 )
