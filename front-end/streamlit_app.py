@@ -32,7 +32,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from auth import authenticate_user, create_user, hash_password
-from session_utils import get_user_conversations, save_conversation, create_new_session
+from session_utils import get_user_conversations, save_conversation, create_new_session, get_conversation_messages
 from agents.policy_pulse_agent.agent import root_agent, runner, session_service
 from google.genai import types
 
@@ -50,6 +50,16 @@ def init_session_state():
         st.session_state.messages = []
     if 'conversations' not in st.session_state:
         st.session_state.conversations = []
+    
+    # Auto-start new conversation when authenticated but no active session
+    # if (st.session_state.authenticated and 
+    #     st.session_state.user_id and 
+    #     not st.session_state.current_session_id):
+        
+    #     session_id = create_new_session(st.session_state.user_id)
+    #     if session_id:
+    #         st.session_state.current_session_id = session_id
+    #         st.session_state.messages = []
 
 def login_page():
     """Display login/signup page"""
@@ -107,12 +117,33 @@ def start_new_conversation():
     st.session_state.messages = []
     st.rerun()
 
-def load_conversation(session_id):
-    """Load a specific conversation"""
-    # Here you would load messages from the database
-    # For now, we'll clear messages and set the session
+def load_conversation(session_id: str):
+    """Load a conversation by session ID."""
     st.session_state.current_session_id = session_id
+    
+    # Get messages for this session
+    messages = get_conversation_messages(session_id)
+    
+    # Clear and repopulate the messages
     st.session_state.messages = []
+    
+    for msg in messages:
+        # Handle assistant messages that have parts structure
+        if msg["role"] == "assistant" and isinstance(msg["content"], dict) and "parts" in msg["content"]:
+            # Extract text from parts
+            text_parts = []
+            for part in msg["content"]["parts"]:
+                if "text" in part:
+                    text_parts.append(part["text"])
+            content = "\n".join(text_parts)
+        else:
+            content = msg["content"]
+        
+        st.session_state.messages.append({
+            "role": msg["role"],
+            "content": content
+        })
+    
     st.rerun()
 
 async def get_agent_response(user_message):
@@ -142,6 +173,14 @@ def chat_interface():
     """Main chat interface"""
     st.title("🏥 Policy Pulse Agent")
     
+    # # Auto-start conversation here (won't cause re-run loop). I tried this but it affected the functioning of the front page
+    # if not st.session_state.current_session_id:
+    #     if st.button("🆕 Start New Conversation", use_container_width=True):
+    #         start_new_conversation()
+    #         st.rerun()
+    #     st.info("👈 Click 'Start New Conversation' to begin!")
+    #     return
+
     # Sidebar for conversations
     with st.sidebar:
         st.subheader(f"Welcome, {st.session_state.username}!")

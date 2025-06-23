@@ -95,11 +95,7 @@ def _retrieve_context(query: str) -> str:
         api_key= os.environ.get("PINECONE_API_KEY"),
         top_k=5,
     )
-    # Debug: Print what we got
-    print(f"📄 Retrieved {len(chunks)} chunks")
-    for i, hit in enumerate(chunks):
-        print(f"  Chunk {i+1}: {hit['text'][:100]}...")  # First 100 chars
-    
+        
     result = "\n\n".join(hit["text"] for hit in chunks)
     print(f"📝 Combined result length: {len(result)} characters")
     
