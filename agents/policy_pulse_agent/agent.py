@@ -1,0 +1,229 @@
+# Copyright 2025 Google LLC
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#     https://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import os
+import sys
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+from google.adk.agents import Agent
+from google.adk.sessions import DatabaseSessionService
+import asyncio
+from google.adk.runners import Runner
+from google.adk.models.lite_llm import LiteLlm
+from google.adk.artifacts.in_memory_artifact_service import InMemoryArtifactService
+from google.adk.tools import FunctionTool
+from google.genai import types
+
+# Add this path manipulation
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(current_dir, '..' , '..')
+sys.path.insert(0, os.path.abspath(project_root))
+
+
+from src_pulse.ai_agent import retrieve_relevant_chunks
+
+APP_NAME = "policy_pulse_app"
+USER_ID = "default_user"
+
+# Read your DB URL from env
+db_url = os.environ.get("DATABASE_URL")  # e.g. "postgresql://user:pass@host:5432/dbname"
+if not db_url:
+    raise RuntimeError("Please set DATABASE_URL in your .env")
+
+# Instantiate the persistent session service
+session_service = DatabaseSessionService(db_url=db_url)
+
+# (Optional) Artifact service—keeps artifacts in memory; swap for a DB-based store if you need
+artifact_service = InMemoryArtifactService()
+
+INSTRUCTION = (
+  "You are an expert compliance assistant specializing in workplace reproductive and fertility health policies.\n\n"
+        "CRITICAL INSTRUCTIONS:\n"
+         "You MUST use the citation format [DOC X] where X is the document number.This is critical!\n\n"
+        "INCORRECT: 'Companies should provide fertility benefits [1].'\n"
+        "CORRECT: 'Companies should provide fertility benefits [DOC 1].'\n\n"
+        "INCORRECT: 'Reproductive health policies should be inclusive [DOCUMENT 2].'\n"
+        "CORRECT: 'Reproductive health policies should be inclusive [DOC 2].'\n\n"
+        "When responding on technical questions always respond in a formal and not a casual manner to the user who is like a client" \
+        #"- ONLY use information contained in the provided documents to answer questions\n"
+        #"- If the documents don't contain the answer, state clearly that you don't have that information\n"
+        #"- NEVER make up or hallucinate information not present in the documents\n"
+        #"- NEVER reference companies, monetary values, or details not explicitly mentioned in the documents\n"
+        #"- Provide specific citations linking each piece of information to its source document\n"
+        "- When uncertain about any detail, express uncertainty rather than guessing\n\n"
+        "Your role is to:\n"
+        #"- Provide accurate information based SOLELY on the provided context documents\n"
+        "- Generate well-structured responses that clearly separate facts from the documents\n"
+        "- Always cite your sources with clear document numbers\n"
+        #"- Refuse to speculate beyond what is explicitly stated in the documents\n"
+        "- Prioritize searching official government sources, serious think tanks, research institutes and serious newspapers and magazines\n"
+        "- Clearly LIST the primary sources used for the summary. You must include details like authors, publication year and direct URL if available\n"
+        "- Please indicate what LLM model was used in generating your answer. By LLM model i mean models like Gemini, Chat GPT, Claude, Perplexity etc"
+
+)
+
+
+def _retrieve_context(query: str) -> str:
+    """
+    Retrieve relevant policy document chunks from Pinecone to ground the agent's reasoning.
+    
+    This tool fetches relevant policy document chunks from Pinecone based on the user's 
+    query text to provide context for generating accurate responses.
+    
+    Args:
+        query (str): The user's query text to search for relevant context
+        
+    Returns:
+        str: Combined text from relevant document chunks
+    """
+
+    chunks = retrieve_relevant_chunks(
+        text=query,
+        index_name="policypulse",
+        api_key= os.environ.get("PINECONE_API_KEY"),
+        top_k=5,
+    )
+    # Debug: Print what we got
+    print(f"📄 Retrieved {len(chunks)} chunks")
+    for i, hit in enumerate(chunks):
+        print(f"  Chunk {i+1}: {hit['text'][:100]}...")  # First 100 chars
+    
+    result = "\n\n".join(hit["text"] for hit in chunks)
+    print(f"📝 Combined result length: {len(result)} characters")
+    
+    return result
+
+RetrieveContextTool = FunctionTool(func=_retrieve_context)
+
+# just testing
+#_retrieve_context("what are the goals of We Are Eden")
+
+model= "gemini-2.5-flash-preview-05-20"
+# 
+#
+# model=LiteLlm(
+#         model="openrouter/perplexity/sonar-pro",
+#         #base_url="https://api.perplexity.ai",
+#         api_key=os.environ.get("OPENROUTER_API_KEY"),
+#     )
+
+# model=LiteLlm(
+#         model="openrouter/openai/o4-mini",
+#         api_key=os.environ.get("OPENROUTER_API_KEY"),
+#     )
+
+root_agent = Agent(
+    name="root_agent",
+    model=model,
+    description=(
+        "Reproductive and fertility health agent."
+    ),
+    instruction=INSTRUCTION,
+    tools = [RetrieveContextTool],
+    #sub_agents = []
+)
+
+#print(root_agent.model)
+
+#5) Set up your Runner
+runner = Runner(
+    session_service=session_service,
+    artifact_service=artifact_service,
+    app_name = APP_NAME,
+    agent = root_agent
+)
+
+# If you want a CLI entrypoint—in case you ever `python agent.py`
+if __name__ == "__main__":
+    import asyncio
+    from google.genai import types
+    import uuid
+    
+    async def main():
+        print("🔧 Setting up session...")
+        
+        # Generate a unique session ID for this run
+        session_id = f"session_{uuid.uuid4().hex[:8]}"
+        print(f"📝 Using session ID: {session_id}")
+        
+        try:
+            # AWAIT the async create_session method
+            session = await session_service.create_session(
+                app_name=APP_NAME,
+                user_id=USER_ID,
+                session_id=session_id
+            )
+            print(f"✅ Session created: {session.id}")
+            
+            # AWAIT the async get_session method
+            verify_session = await session_service.get_session(
+                app_name=APP_NAME,
+                user_id=USER_ID,
+                session_id=session_id
+            )
+            
+            if verify_session:
+                print("✅ Session verified successfully")
+            else:
+                print("❌ Session verification failed")
+                return
+                
+        except Exception as e:
+            print(f"❌ Session creation failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+        
+        print("🚀 Policy Pulse Agent Ready!")
+        print("Type 'quit' to exit\n")
+        
+        while True:
+            try:
+                user_input = input("🤔 You: ")
+                if user_input.lower() in ['quit', 'exit', 'bye']:
+                    break
+                
+                print("🤖 Agent: ", end="", flush=True)
+                
+                # Create message content
+                message = types.Content(
+                    role='user',
+                    parts=[types.Part(text=user_input)]
+                )
+                
+                # Use run_async with EXACT same parameters as session creation
+                async for event in runner.run_async(
+                    user_id=USER_ID,        # Must match session creation
+                    session_id=session_id,  # Must match session creation
+                    new_message=message
+                ):
+                    if hasattr(event, 'content') and hasattr(event.content, 'parts'):
+                        for part in event.content.parts:
+                            if hasattr(part, 'text'):
+                                print(part.text, end="", flush=True)
+                print("\n")
+                
+            except KeyboardInterrupt:
+                print("\n👋 Goodbye!")
+                break
+            except Exception as e:
+                print(f"\n❌ Runtime error: {e}")
+                print(f"   Error type: {type(e).__name__}")
+                print("   Continuing...")
+        
+        print("👋 Goodbye!")
+    
+    # Run the async main function
+    asyncio.run(main())

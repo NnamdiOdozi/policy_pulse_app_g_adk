@@ -1,0 +1,12 @@
+# instructions for using uv for new users
+
+pip install uv
+uv venv
+source .venv/bin/activate
+
+uv pip compile pyproject.toml --output-file requirements.txt
+uv pip sync requirements.txt
+
+ python agents/policy_pulse_agent/agent.py
+
+
