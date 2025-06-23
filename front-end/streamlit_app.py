@@ -116,13 +116,34 @@ def start_new_conversation():
     st.session_state.current_session_id = session_id
     st.session_state.messages = []
     st.rerun()
-
 def load_conversation(session_id: str):
     """Load a conversation by session ID."""
     st.session_state.current_session_id = session_id
     
     # Get messages for this session
-    messages = get_conversation_messages(session_id)
+    messages = get_conversation_messages(st.session_state.user_id, session_id)
+    
+    # Clear and repopulate the messages
+    st.session_state.messages = []
+    
+    for msg in messages:
+        # Handle assistant messages that have parts structure
+        if msg["role"] == "assistant" and isinstance(msg["content"], dict) and "parts" in msg["content"]:
+            # Extract text from parts
+            text_parts = []
+            for part in msg["content"]["parts"]:
+                if "text" in part:
+                    text_parts.append(part["text"])
+            content = "\n".join(text_parts)
+        else:
+            content = msg["content"]
+        
+        st.session_state.messages.append({
+            "role": msg["role"],
+            "content": content
+        })
+    
+    st.rerun()
     
     # Clear and repopulate the messages
     st.session_state.messages = []
