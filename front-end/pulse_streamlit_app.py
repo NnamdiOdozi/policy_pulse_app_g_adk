@@ -17,22 +17,12 @@ st.set_page_config(
     }
 )
 
-# Add dark theme CSS
-# st.markdown("""
-# <style>
-#     .stApp {
-#         background-color: #0e1117;
-#         color: #fafafa;
-#     }
-# </style>
-# """, unsafe_allow_html=True)
-
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from auth import authenticate_user, create_user, hash_password
-from session_utils import get_user_conversations, save_conversation, create_new_session, get_conversation_messages
+from session_utils import get_user_conversations, save_conversation, create_new_session, get_conversation_messages, delete_conversation
 from agents.policy_pulse_agent.agent import root_agent, runner, session_service
 from google.genai import types
 
@@ -50,16 +40,6 @@ def init_session_state():
         st.session_state.messages = []
     if 'conversations' not in st.session_state:
         st.session_state.conversations = []
-    
-    # Auto-start new conversation when authenticated but no active session
-    # if (st.session_state.authenticated and 
-    #     st.session_state.user_id and 
-    #     not st.session_state.current_session_id):
-        
-    #     session_id = create_new_session(st.session_state.user_id)
-    #     if session_id:
-    #         st.session_state.current_session_id = session_id
-    #         st.session_state.messages = []
 
 def login_page():
     """Display login/signup page"""
@@ -116,34 +96,13 @@ def start_new_conversation():
     st.session_state.current_session_id = session_id
     st.session_state.messages = []
     st.rerun()
+
 def load_conversation(session_id: str):
     """Load a conversation by session ID."""
     st.session_state.current_session_id = session_id
     
     # Get messages for this session
     messages = get_conversation_messages(st.session_state.user_id, session_id)
-    
-    # Clear and repopulate the messages
-    st.session_state.messages = []
-    
-    for msg in messages:
-        # Handle assistant messages that have parts structure
-        if msg["role"] == "assistant" and isinstance(msg["content"], dict) and "parts" in msg["content"]:
-            # Extract text from parts
-            text_parts = []
-            for part in msg["content"]["parts"]:
-                if "text" in part:
-                    text_parts.append(part["text"])
-            content = "\n".join(text_parts)
-        else:
-            content = msg["content"]
-        
-        st.session_state.messages.append({
-            "role": msg["role"],
-            "content": content
-        })
-    
-    st.rerun()
     
     # Clear and repopulate the messages
     st.session_state.messages = []
@@ -183,10 +142,11 @@ async def get_agent_response(user_message):
         ):
             if hasattr(event, 'content') and hasattr(event.content, 'parts'):
                 for part in event.content.parts:
-                    if hasattr(part, 'text') and part.text is not None:  # Add None check
+                    if hasattr(part, 'text') and part.text is not None:
                         response_text += part.text
         
-        return response_text
+        # Return only the text content, not a structured object
+        return response_text if response_text else "I'm sorry, I couldn't generate a response."
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -194,14 +154,6 @@ def chat_interface():
     """Main chat interface"""
     st.title("🏥 Policy Pulse Agent")
     
-    # # Auto-start conversation here (won't cause re-run loop). I tried this but it affected the functioning of the front page
-    # if not st.session_state.current_session_id:
-    #     if st.button("🆕 Start New Conversation", use_container_width=True):
-    #         start_new_conversation()
-    #         st.rerun()
-    #     st.info("👈 Click 'Start New Conversation' to begin!")
-    #     return
-
     # Sidebar for conversations
     with st.sidebar:
         st.subheader(f"Welcome, {st.session_state.username}!")
@@ -224,12 +176,31 @@ def chat_interface():
             for conv in st.session_state.conversations:
                 # Use first 50 chars as title
                 title = conv['title'][:50] + "..." if len(conv['title']) > 50 else conv['title']
-                if st.button(
-                    f"💬 {title}",
-                    key=f"conv_{conv['session_id']}",
-                    use_container_width=True
-                ):
-                    load_conversation(conv['session_id'])
+                
+                # Create columns for button and delete icon
+                col1, col2 = st.columns([5, 1])
+                
+                with col1:
+                    if st.button(
+                        f"💬 {title}",
+                        key=f"conv_{conv['session_id']}",
+                        use_container_width=True
+                    ):
+                        load_conversation(conv['session_id'])
+                
+                with col2:
+                    if st.button(
+                        "🗑️",
+                        key=f"del_{conv['session_id']}",
+                        help="Delete this conversation",
+                        use_container_width=True
+                    ):
+                        if delete_conversation(st.session_state.user_id, conv['session_id']):
+                            st.success("Conversation deleted")
+                            load_conversations()
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete conversation")
         else:
             st.write("No previous conversations")
     
@@ -241,20 +212,31 @@ def chat_interface():
     # Display chat messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            st.write(message["content"])
+            content = message["content"]
+            
+            # Handle content that might still be in parts format
+            if isinstance(content, dict) and "parts" in content:
+                # Extract text from parts
+                text_parts = []
+                for part in content["parts"]:
+                    if "text" in part:
+                        text_parts.append(part["text"])
+                content = "\n".join(text_parts)
+            
+            st.markdown(content)
     
     # Chat input
     if prompt := st.chat_input("Ask about reproductive & fertility health policies..."):
         # Add user message
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
-            st.write(prompt)
+            st.markdown(prompt)
         
         # Get agent response
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 response = asyncio.run(get_agent_response(prompt))
-                st.write(response)
+                st.markdown(response)
                 
         # Add assistant message
         st.session_state.messages.append({"role": "assistant", "content": response})
@@ -273,7 +255,6 @@ def chat_interface():
         load_conversations()
 
 def main():
-    
     init_session_state()
     
     if not st.session_state.authenticated:

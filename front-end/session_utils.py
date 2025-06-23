@@ -109,19 +109,34 @@ def get_conversation_messages(user_id, session_id):
                 
                 messages = []
                 for event in events:
-                    # Parse the event content (this might need adjustment based on ADK's format)
+                    content = event['content']
+                    
+                    # Extract text from parts structure
+                    text_content = ""
+                    if isinstance(content, dict) and 'parts' in content:
+                        text_parts = []
+                        for part in content['parts']:
+                            if isinstance(part, dict) and 'text' in part:
+                                text_parts.append(part['text'])
+                        text_content = '\n'.join(text_parts)
+                    else:
+                        text_content = str(content) if content else ""
+                    
+                    # Skip events with no text content (like tool calls)
+                    if not text_content.strip():
+                        continue
+                    
+                    # Determine role based on author
                     if event['author'] == 'user':
-                        messages.append({
-                            'role': 'user',
-                            'content': event['content'],
-                            'timestamp': event['timestamp']
-                        })
-                    elif event['author'] == 'policy_pulse_agent':
-                        messages.append({
-                            'role': 'assistant', 
-                            'content': event['content'],
-                            'timestamp': event['timestamp']
-                        })
+                        role = 'user'
+                    else:  # root_agent or any other agent
+                        role = 'assistant'
+                    
+                    messages.append({
+                        'role': role,
+                        'content': text_content,
+                        'timestamp': event['timestamp']
+                    })
                 
                 return messages
                 

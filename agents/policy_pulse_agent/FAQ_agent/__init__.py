@@ -1,1 +1,1 @@
-from .agent import restaurant_agent
+from .agent import FAQ_agent
