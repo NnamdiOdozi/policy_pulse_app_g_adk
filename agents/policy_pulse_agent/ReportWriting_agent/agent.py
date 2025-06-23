@@ -12,47 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import datetime
-from zoneinfo import ZoneInfo
+
 from google.adk.agents import Agent
-
-def get_current_time(city: str) -> dict:
-    """Returns the current time in a specified city.
-
-    Args:
-        city (str): The name of the city for which to retrieve the current time.
-
-    Returns:
-        dict: status and result or error msg.
-    """
-    print(f"--- Tool: get_current_time called for city: {city} ---") # Log tool execution
-    city_normalized = city.lower().replace(" ", "")
-
-    # Mapping of cities to their IANA timezone identifiers
-    city_timezones = {
-        "newyork": "America/New_York",
-        "london": "Europe/London",
-        "tokyo": "Asia/Tokyo",
-        "paris": "Europe/Paris",
-        "berlin": "Europe/Berlin",
-        "sydney": "Australia/Sydney",
-        "delhi": "Asia/Kolkata",
-        "bengaluru": "Asia/Kolkata",
-    }
-
-    if city_normalized not in city_timezones:
-        return {
-            "status": "error",
-            "error_message": f"Sorry, I don't have timezone information for '{city}'.",
-        }
-
-    tz_identifier = city_timezones[city_normalized]
-    tz = ZoneInfo(tz_identifier)
-    now = datetime.datetime.now(tz)
-    report = (
-        f'The current time in {city} is {now.strftime("%Y-%m-%d %H:%M:%S %Z%z")}'
-    )
-    return {"status": "success", "report": report}
+from policy_pulse_agent.agent import RetrieveContextTool
 
 INSTRUCTION = (
         "You are a time information agent."
@@ -64,12 +26,12 @@ INSTRUCTION = (
         "In case the city is unsupported, give a regret response."
     )
 
-time_agent = Agent(
-    name="time_agent",
+ReportWriting_agent = Agent(
+    name="ReportWriting_agent",
     model="gemini-2.5-flash-preview-05-20",
     description=(
-        "Agent which helps find the current time in a given city."
+        "Agent which long-form and research type writing in prder to draft reports, policies etc."
     ),
     instruction=INSTRUCTION,
-    tools=[get_current_time]
+    tools=[RetrieveContextTool]
 )

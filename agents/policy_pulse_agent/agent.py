@@ -23,8 +23,10 @@ import asyncio
 from google.adk.runners import Runner
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.artifacts.in_memory_artifact_service import InMemoryArtifactService
-from google.adk.tools import FunctionTool
+from google.adk.tools import FunctionTool, agent_tool
 from google.genai import types
+from .FAQ_agent import FAQ_agent
+from .ReportWriting_agent import ReportWriting_agent
 
 # Add this path manipulation
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -120,6 +122,9 @@ model= "gemini-2.5-flash-preview-05-20"
 #         api_key=os.environ.get("OPENROUTER_API_KEY"),
 #     )
 
+
+FAQ_tool = agent_tool(agent=FAQ_agent)
+ReportWriting_tool = agent_tool(agent=ReportWriting_agent)
 root_agent = Agent(
     name="root_agent",
     model=model,
@@ -127,7 +132,7 @@ root_agent = Agent(
         "Reproductive and fertility health agent."
     ),
     instruction=INSTRUCTION,
-    tools = [RetrieveContextTool],
+    tools = [RetrieveContextTool, FAQ_tool, ReportWriting_tool],
     #sub_agents = []
 )
 
