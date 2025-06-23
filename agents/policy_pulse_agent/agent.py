@@ -24,9 +24,11 @@ from google.adk.runners import Runner
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.artifacts.in_memory_artifact_service import InMemoryArtifactService
 from google.adk.tools import FunctionTool, agent_tool
+from google.adk.tools.agent_tool import AgentTool
 from google.genai import types
 from .FAQ_agent import FAQ_agent
 from .ReportWriting_agent import ReportWriting_agent
+from .ReportWriting_OpenAI_agent import ReportWriting_OpenAI_agent
 
 # Add this path manipulation
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -34,7 +36,7 @@ project_root = os.path.join(current_dir, '..' , '..')
 sys.path.insert(0, os.path.abspath(project_root))
 
 
-from src_pulse.ai_agent import retrieve_relevant_chunks
+from .tools import RetrieveContextTool
 
 APP_NAME = "policy_pulse_app"
 USER_ID = "default_user"
@@ -51,59 +53,39 @@ session_service = DatabaseSessionService(db_url=db_url)
 artifact_service = InMemoryArtifactService()
 
 INSTRUCTION = (
-  "You are an expert compliance assistant specializing in workplace reproductive and fertility health policies.\n\n"
-        "CRITICAL INSTRUCTIONS:\n"
-         "You MUST use the citation format [DOC X] where X is the document number.This is critical!\n\n"
+  "You are the supervisor agent for the Policy Pulse Appp which is a compliance assistant specializing in workplace reproductive and fertility health policies.\n\n"
+        "CRITICAL INSTRUCTIONS:\n" \
+        "You have at your disposal knowledgeable tools and sub-agents that you should delegate to them user queries unless the questions are of a very trivial and general nature\n"
+        "You should crtitically review what your sub-agents and tools return to you before you output it to the user for quality, presentation and formatting\n"
+        "What your sub agents are tools return to you should be screened and any profanity and inappropriate language should be removed\n"
+        "Any personally identifiable information PII should be masked before being sent to the large language models" \
+        "If a user asks questions that are decidely offtopic beyond general pleasantries, you should decline to answer and tell the user that you have not been trained to answer such topics\n"
+        "You MUST use the citation format [DOC X] where X is the document number.This is critical!\n\n"
         "INCORRECT: 'Companies should provide fertility benefits [1].'\n"
         "CORRECT: 'Companies should provide fertility benefits [DOC 1].'\n\n"
         "INCORRECT: 'Reproductive health policies should be inclusive [DOCUMENT 2].'\n"
         "CORRECT: 'Reproductive health policies should be inclusive [DOC 2].'\n\n"
-        "When responding on technical questions always respond in a formal and not a casual manner to the user who is like a client" \
+        "When responding on technical questions always respond in a formal and not a casual manner to the user who is like a client\n" \
+        
         #"- ONLY use information contained in the provided documents to answer questions\n"
         #"- If the documents don't contain the answer, state clearly that you don't have that information\n"
         #"- NEVER make up or hallucinate information not present in the documents\n"
         #"- NEVER reference companies, monetary values, or details not explicitly mentioned in the documents\n"
         #"- Provide specific citations linking each piece of information to its source document\n"
         "- When uncertain about any detail, express uncertainty rather than guessing\n\n"
+        " - the writing should strike an appropriate tone eg casual and conversational for blog articles"
         "Your role is to:\n"
         #"- Provide accurate information based SOLELY on the provided context documents\n"
-        "- Generate well-structured responses that clearly separate facts from the documents\n"
-        "- Always cite your sources with clear document numbers\n"
+        "- Ensure that sources are cited with clear document numbers\n"
         #"- Refuse to speculate beyond what is explicitly stated in the documents\n"
-        "- Prioritize searching official government sources, serious think tanks, research institutes and serious newspapers and magazines\n"
-        "- Clearly LIST the primary sources used for the summary. You must include details like authors, publication year and direct URL if available\n"
-        "- Please indicate what LLM model was used in generating your answer. By LLM model i mean models like Gemini, Chat GPT, Claude, Perplexity etc"
+       
+        "- Clearly LIST the primary sources used for the summary. You must include details like authors, publication year and direct URL if available. If these details are not available you should not speculate as to the reasons for this and should simply say unvailable. You should not say if the documents rae traninig documents or internal documents\n"
+        "- Please indicate what LLM model was used in generating your answer. By LLM model i mean models like Gemini, Chat GPT, Claude, Perplexity etc\n"
 
 )
 
 
-def _retrieve_context(query: str) -> str:
-    """
-    Retrieve relevant policy document chunks from Pinecone to ground the agent's reasoning.
-    
-    This tool fetches relevant policy document chunks from Pinecone based on the user's 
-    query text to provide context for generating accurate responses.
-    
-    Args:
-        query (str): The user's query text to search for relevant context
-        
-    Returns:
-        str: Combined text from relevant document chunks
-    """
 
-    chunks = retrieve_relevant_chunks(
-        text=query,
-        index_name="policypulse",
-        api_key= os.environ.get("PINECONE_API_KEY"),
-        top_k=5,
-    )
-        
-    result = "\n\n".join(hit["text"] for hit in chunks)
-    print(f"📝 Combined result length: {len(result)} characters")
-    
-    return result
-
-RetrieveContextTool = FunctionTool(func=_retrieve_context)
 
 # just testing
 #_retrieve_context("what are the goals of We Are Eden")
@@ -123,8 +105,9 @@ model= "gemini-2.5-flash-preview-05-20"
 #     )
 
 
-FAQ_tool = agent_tool(agent=FAQ_agent)
-ReportWriting_tool = agent_tool(agent=ReportWriting_agent)
+FAQ_tool = AgentTool(agent=FAQ_agent)
+ReportWriting_tool = AgentTool(agent=ReportWriting_OpenAI_agent)
+
 root_agent = Agent(
     name="root_agent",
     model=model,
@@ -132,7 +115,11 @@ root_agent = Agent(
         "Reproductive and fertility health agent."
     ),
     instruction=INSTRUCTION,
-    tools = [RetrieveContextTool, FAQ_tool, ReportWriting_tool],
+    tools = [FAQ_tool, ReportWriting_tool],
+    generate_content_config=types.GenerateContentConfig(
+        temperature=0.5,  # Adjust as needed (0.0-1.0)
+    ),
+        
     #sub_agents = []
 )
 
