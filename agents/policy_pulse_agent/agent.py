@@ -48,7 +48,22 @@ if not db_url:
     raise RuntimeError("Please set DATABASE_URL in your .env")
 
 # Instantiate the persistent session service
-session_service = DatabaseSessionService(db_url=db_url)
+from google.adk.sessions import DatabaseSessionService
+
+session_service = DatabaseSessionService(
+    db_url=db_url,               # your full supabase://…5432/postgres URL
+    # 1) test every checkout:
+    pool_pre_ping=True,
+    # 2) proactively recycle before 5 min idle:
+    pool_recycle=240,            # seconds (4 min)
+    # 3) preserve SSL + keepalives for the socket itself:
+    connect_args={
+      "sslmode": "require",      # Supabase needs SSL
+      "keepalives_idle": 60,
+      "keepalives_interval": 15,
+      "keepalives_count": 5,
+    },
+)
 
 # (Optional) Artifact service—keeps artifacts in memory; swap for a DB-based store if you need
 artifact_service = InMemoryArtifactService()

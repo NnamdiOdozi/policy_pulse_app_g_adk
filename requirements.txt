@@ -70,6 +70,8 @@ click==8.2.1
     #   litellm
     #   streamlit
     #   uvicorn
+cloudpickle==3.1.1
+    # via google-cloud-aiplatform
 colorama==0.4.6
     # via
     #   click
@@ -117,14 +119,16 @@ gitdb==4.0.12
     # via gitpython
 gitpython==3.1.44
     # via streamlit
-google-adk==1.0.0
+google-adk==1.2.1
     # via step-by-step-adk (pyproject.toml)
 google-api-core==2.24.2
     # via
     #   google-api-python-client
     #   google-cloud-aiplatform
+    #   google-cloud-appengine-logging
     #   google-cloud-bigquery
     #   google-cloud-core
+    #   google-cloud-logging
     #   google-cloud-resource-manager
     #   google-cloud-secret-manager
     #   google-cloud-speech
@@ -138,8 +142,10 @@ google-auth==2.40.2
     #   google-api-python-client
     #   google-auth-httplib2
     #   google-cloud-aiplatform
+    #   google-cloud-appengine-logging
     #   google-cloud-bigquery
     #   google-cloud-core
+    #   google-cloud-logging
     #   google-cloud-resource-manager
     #   google-cloud-secret-manager
     #   google-cloud-speech
@@ -148,14 +154,21 @@ google-auth==2.40.2
     #   google-genai
 google-auth-httplib2==0.2.0
     # via google-api-python-client
-google-cloud-aiplatform==1.94.0
+google-cloud-aiplatform==1.98.0
     # via google-adk
+google-cloud-appengine-logging==1.6.2
+    # via google-cloud-logging
+google-cloud-audit-log==0.3.2
+    # via google-cloud-logging
 google-cloud-bigquery==3.33.0
     # via google-cloud-aiplatform
 google-cloud-core==2.4.3
     # via
     #   google-cloud-bigquery
+    #   google-cloud-logging
     #   google-cloud-storage
+google-cloud-logging==3.12.1
+    # via google-cloud-aiplatform
 google-cloud-resource-manager==1.14.2
     # via google-cloud-aiplatform
 google-cloud-secret-manager==2.23.3
@@ -167,12 +180,14 @@ google-cloud-storage==2.19.0
     #   google-adk
     #   google-cloud-aiplatform
 google-cloud-trace==1.16.1
-    # via opentelemetry-exporter-gcp-trace
+    # via
+    #   google-cloud-aiplatform
+    #   opentelemetry-exporter-gcp-trace
 google-crc32c==1.7.1
     # via
     #   google-cloud-storage
     #   google-resumable-media
-google-genai==1.16.1
+google-genai==1.21.1
     # via
     #   step-by-step-adk (pyproject.toml)
     #   google-adk
@@ -184,6 +199,7 @@ google-resumable-media==2.7.2
 googleapis-common-protos==1.70.0
     # via
     #   google-api-core
+    #   google-cloud-audit-log
     #   grpc-google-iam-v1
     #   grpcio-status
 graphviz==0.20.3
@@ -192,6 +208,7 @@ greenlet==3.2.3
     # via sqlalchemy
 grpc-google-iam-v1==0.14.2
     # via
+    #   google-cloud-logging
     #   google-cloud-resource-manager
     #   google-cloud-secret-manager
 grpcio==1.71.0
@@ -398,17 +415,21 @@ openai==1.90.0
 opentelemetry-api==1.33.1
     # via
     #   google-adk
+    #   google-cloud-logging
     #   opentelemetry-exporter-gcp-trace
     #   opentelemetry-resourcedetector-gcp
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
 opentelemetry-exporter-gcp-trace==1.9.0
-    # via google-adk
+    # via
+    #   google-adk
+    #   google-cloud-aiplatform
 opentelemetry-resourcedetector-gcp==1.9.0a0
     # via opentelemetry-exporter-gcp-trace
 opentelemetry-sdk==1.33.1
     # via
     #   google-adk
+    #   google-cloud-aiplatform
     #   opentelemetry-exporter-gcp-trace
     #   opentelemetry-resourcedetector-gcp
 opentelemetry-semantic-conventions==0.54b1
@@ -471,6 +492,8 @@ proto-plus==1.26.1
     # via
     #   google-api-core
     #   google-cloud-aiplatform
+    #   google-cloud-appengine-logging
+    #   google-cloud-logging
     #   google-cloud-resource-manager
     #   google-cloud-secret-manager
     #   google-cloud-speech
@@ -479,6 +502,9 @@ protobuf==5.29.4
     # via
     #   google-api-core
     #   google-cloud-aiplatform
+    #   google-cloud-appengine-logging
+    #   google-cloud-audit-log
+    #   google-cloud-logging
     #   google-cloud-resource-manager
     #   google-cloud-secret-manager
     #   google-cloud-speech
@@ -656,8 +682,9 @@ starlette==0.46.2
     #   sse-starlette
 streamlit==1.45.1
     # via step-by-step-adk (pyproject.toml)
-tenacity==9.1.2
+tenacity==8.5.0
     # via
+    #   google-genai
     #   langchain-core
     #   streamlit
 terminado==0.18.1
@@ -709,6 +736,7 @@ typing-extensions==4.13.2
     #   anyio
     #   beautifulsoup4
     #   fastapi
+    #   google-adk
     #   google-cloud-aiplatform
     #   google-genai
     #   huggingface-hub
