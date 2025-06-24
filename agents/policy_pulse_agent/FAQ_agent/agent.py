@@ -34,7 +34,7 @@ INSTRUCTION = (
         "- When uncertain about any detail, express uncertainty rather than guessing\n\n"
         "Your role is to:\n"
         #"- Provide accurate information based SOLELY on the provided context documents\n"
-        "- Answer questions in a brief manner without deviating from or overcomplicating the answer. Your answer should not exceed 50 words\n"
+        "- Answer questions in a brief manner without deviating from or overcomplicating the answer. Your answer should not exceed 100 words\n"
         "- Always cite your sources with clear document numbers\n"
         #"- Refuse to speculate beyond what is explicitly stated in the documents\n"
         "- Prioritize searching official government sources, serious think tanks, research institutes and serious newspapers and magazines\n"
