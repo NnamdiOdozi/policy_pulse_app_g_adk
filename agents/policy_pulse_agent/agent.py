@@ -35,6 +35,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.join(current_dir, '..' , '..')
 sys.path.insert(0, os.path.abspath(project_root))
 
+from sqlalchemy import create_engine  # This will work - SQLAlchemy is already installed
 
 from .tools import RetrieveContextTool
 

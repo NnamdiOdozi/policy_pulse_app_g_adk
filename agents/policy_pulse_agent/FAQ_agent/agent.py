@@ -14,6 +14,7 @@
 
 from google.adk.agents import Agent
 from google.genai import types
+from ..tools import RetrieveContextTool
 
 
 INSTRUCTION = (
@@ -51,5 +52,5 @@ FAQ_agent = Agent(
     generate_content_config=types.GenerateContentConfig(
         temperature=0.3,  # Adjust as needed (0.0-1.0)
     ),
-    #tools=[]
+    tools=[RetrieveContextTool]
 )
