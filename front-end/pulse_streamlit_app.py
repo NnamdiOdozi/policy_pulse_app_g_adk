@@ -26,10 +26,44 @@ from session_utils import get_user_conversations, save_conversation, create_new_
 from agents.policy_pulse_agent.agent import root_agent, runner, session_service
 from google.genai import types
 
+def show_landing_page():
+    """Display the landing page"""
+    import streamlit.components.v1 as components
+    
+    # Read the HTML file
+    html_path = os.path.join(os.path.dirname(__file__), "static", "landing_page.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+    
+    # Modify the CTA button to redirect to login
+    html_content = html_content.replace(
+        'href="mailto:nnamdi.odozi@we-are-eden.com?subject=LMF%20Awards%20Follow-Up:%20PolicyPulse%20Demo%20Request"',
+        'href="#" onclick="document.getElementById(\'get-started-btn\').click(); return false;"'
+    )
+    html_content = html_content.replace(
+        'Request a 15-Min PolicyPulse™ Demo',
+        'Get Started with PolicyPulse™'
+    )
+    
+    # Display the HTML
+    components.html(html_content, height=2000, scrolling=True)
+    
+    # Add a hidden button that Streamlit can detect
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("Get Started with PolicyPulse™", key="get-started-btn", type="primary", use_container_width=True):
+            st.session_state.show_login = True
+            st.rerun()
+
+
+
+
 def init_session_state():
     """Initialize Streamlit session state"""
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
+    if 'show_login' not in st.session_state:
+        st.session_state.show_login = False    
     if 'user_id' not in st.session_state:
         st.session_state.user_id = None
     if 'username' not in st.session_state:
@@ -258,7 +292,10 @@ def main():
     init_session_state()
     
     if not st.session_state.authenticated:
-        login_page()
+        if not st.session_state.show_login:
+            show_landing_page()
+        else:
+            login_page()
     else:
         if not st.session_state.conversations:
             load_conversations()

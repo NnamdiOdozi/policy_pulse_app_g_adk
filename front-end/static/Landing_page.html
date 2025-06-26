@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>We Are Eden: The Hidden Epidemic in the Workplace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .gradient-text {
+            background: linear-gradient(to right, #004e92, #4286f4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 400px;
+        }
+        .stat-card h3 {
+            font-size: 3rem;
+            line-height: 1;
+        }
+        @media (min-width: 768px) {
+             .stat-card h3 {
+                font-size: 4rem;
+            }
+        }
+        .flowchart-step {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+        }
+        .flowchart-step:not(:last-child)::after {
+            content: '➔';
+            font-size: 2rem;
+            color: #93c5fd;
+            margin: 0 1rem;
+        }
+        @media (max-width: 1023px) {
+            .flowchart-container {
+                flex-direction: column;
+            }
+            .flowchart-step:not(:last-child)::after {
+                 content: '⬇';
+                 margin: 1rem 0;
+            }
+        }
+        .linkedin-icon {
+            display: inline-block;
+            background-color: #0077b5;
+            color: white;
+            border-radius: 3px;
+            width: 20px;
+            height: 20px;
+            font-style: normal;
+            font-weight: bold;
+            text-align: center;
+            line-height: 20px;
+            font-family: sans-serif;
+            font-size: 14px;
+        }
+    </style>
+    <!-- Chosen Palette: Brilliant Blues (#004e92, #000428, #4286f4, #ade8f4) -->
+    <!-- Application Structure Plan: The infographic follows a comprehensive narrative. 1) Hook with high-impact stats on prevalence. 2) Detail the "Cost of Silence" with productivity, attrition, and financial penalty data. 3) Humanize the issue with relatable personas. 4) Clarify legal risks via the "Reasonable Adjustments" framework. 5) Present We Are Eden's solution, including actionable playbooks. 6) Reinforce value with ROI. 7) Conclude with a clear CTA, team info, and new website links. This structure builds a strong business case from multiple angles. -->
+    <!-- Visualization & Content Choices: 
+        1. Prevalence Stats: Goal(Inform) -> Big Numbers/Donut Chart -> Justification(Simple, powerful visualization of scale).
+        2. Cost of Silence: Goal(Compare) -> Bar Charts (Chart.js) -> Justification(Ideal for comparing categories like stated vs. actual reasons for absence).
+        3. Personas & Legal Flowchart: Goal(Organize/Inform) -> HTML/CSS Cards & Diagram -> Justification(Breaks down qualitative info clearly without prohibited SVG/Mermaid).
+        4. WAE Blueprint & ROI: Goal(Organize/Compare) -> HTML Cards & Bar Chart -> Justification(Structured presentation of solutions and benefits).
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto px-4 py-12">
+
+        <header class="text-center mb-16">
+            <h1 class="text-4xl md:text-5xl font-extrabold mb-2" style="color: #000428;">The Hidden Epidemic in the Workplace</h1>
+            <p class="text-xl md:text-2xl font-light gradient-text">Visualizing the Impact of Reproductive & Fertility Health</p>
+        </header>
+
+        <section id="scale" class="mb-20">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4" style="color: #004e92;">A Mainstream Health Challenge</h2>
+                <p class="max-w-3xl mx-auto text-lg text-gray-600">These are not niche issues. Reproductive and fertility health conditions affect a significant portion of the workforce, impacting colleagues in every team and department.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bg-white rounded-2xl shadow-lg p-6 text-center flex flex-col justify-center stat-card">
+                    <h3 class="font-black gradient-text">1 in 3</h3>
+                    <p class="text-lg font-semibold text-[#000428]">Women in the UK</p>
+                    <p class="text-md text-gray-600">live with a severe reproductive health issue like Endometriosis or Fibroids.</p>
+                </div>
+                 <div class="bg-white rounded-2xl shadow-lg p-6 text-center flex flex-col justify-center stat-card">
+                    <h3 class="font-black gradient-text">1 in 6</h3>
+                    <p class="text-lg font-semibold text-[#000428]">Couples</p>
+                    <p class="text-md text-gray-600">experience fertility challenges, with male factors involved in 50% of cases.</p>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg p-6 text-center flex flex-col justify-center stat-card">
+                    <h3 class="font-black gradient-text">1 in 4</h3>
+                    <p class="text-lg font-semibold text-[#000428]">Pregnancies</p>
+                    <p class="text-md text-gray-600">End in loss, representing a common yet silent grief for many colleagues.</p>
+                </div>
+                 <div class="bg-white rounded-2xl shadow-lg p-6 text-center flex flex-col justify-center stat-card">
+                    <h3 class="font-black gradient-text">#1</h3>
+                    <p class="text-lg font-semibold text-[#000428]">Fastest-Growing</p>
+                    <p class="text-md text-gray-600">Demographic in the workforce are menopausal women, often at their career peak.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="cost" class="mb-20">
+             <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4" style="color: #004e92;">The High Cost of Silence</h2>
+                <p class="text-lg text-gray-600 max-w-3xl mx-auto">When workplace culture prevents open conversation, businesses face tangible losses in productivity, talent, and financial stability.</p>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h3 class="text-xl font-bold text-[#000428] mb-4">Hidden Absences & Lost Productivity</h3>
+                    <p class="text-gray-600 mb-4">Employees often feel compelled to hide the true reason for their absence, preventing targeted support where it's needed most.</p>
+                    <div class="chart-container">
+                        <canvas id="absenceReasonChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h3 class="text-xl font-bold text-[#000428] mb-4">Critical Talent Attrition</h3>
+                     <p class="text-gray-600 mb-4">Lack of support is a direct driver of talent loss, often among the most experienced members of the workforce.</p>
+                    <div class="chart-container">
+                        <canvas id="attritionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="personas" class="mb-20">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold text-[#004e92]">The Lived Experience: Stories Behind the Stats</h2>
+                <p class="text-lg text-gray-600 max-w-3xl mx-auto">This is a human issue affecting colleagues of all genders and life stages, every single day.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h3 class="text-xl font-bold" style="color:#4286f4;">Anna: Living with Endometriosis</h3>
+                    <p class="text-gray-600 mt-2">A Marketing Manager battling chronic pain. She worries her frequent need for breaks is judged as a lack of commitment, not a medical necessity.</p>
+                </div>
+                 <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h3 class="text-xl font-bold" style="color:#4286f4;">Ben & Chloe: The Fertility Journey</h3>
+                    <p class="text-gray-600 mt-2">Undergoing IVF, they use annual leave for appointments, fearing it will harm their careers. They feel isolated and unsupported.</p>
+                </div>
+                 <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h3 class="text-xl font-bold" style="color:#4286f4;">Susan: Navigating Menopause</h3>
+                    <p class="text-gray-600 mt-2">A Senior Director whose confidence has plummeted due to 'brain fog'. She fears symptoms are seen as incompetence, a critical risk for senior female talent.</p>
+                </div>
+                 <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h3 class="text-xl font-bold" style="color:#4286f4;">David: The Reality of Andropause</h3>
+                    <p class="text-gray-600 mt-2">A Team Lead struggling with fatigue and poor concentration. His symptoms are dismissed as 'burnout', and the stigma around men's health prevents him from seeking help.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="legal" class="mb-20 bg-white p-8 rounded-2xl shadow-lg">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold text-[#004e92]">The Legal Framework: Rights & Responsibilities</h2>
+                <p class="text-lg text-gray-600 max-w-3xl mx-auto">Under the Equality Act 2010, proactive support is not just good practice; it's a legal imperative.</p>
+            </div>
+            <div class="flex items-center justify-center flex-wrap flowchart-container">
+                <div class="flowchart-step p-4">
+                    <p class="font-semibold text-gray-700 bg-blue-50 p-4 rounded-lg border-2 border-blue-200">Health condition has 'substantial & long-term' impact on work</p>
+                </div>
+                 <div class="flowchart-step p-4">
+                    <p class="font-semibold text-gray-700 bg-blue-50 p-4 rounded-lg border-2 border-blue-200">Condition meets the legal definition of a Disability</p>
+                </div>
+                <div class="flowchart-step p-4">
+                    <p class="font-bold text-[#000428] bg-blue-100 p-4 rounded-lg border-2 border-dashed border-[#004e92]">Employer has a LEGAL DUTY to make Reasonable Adjustments</p>
+                </div>
+            </div>
+            <div class="mt-8 text-center">
+                <h4 class="text-lg font-bold text-[#000428]">The Risk is Real: Menopause-related tribunal claims have <span class="gradient-text">tripled</span> in recent years.</h4>
+            </div>
+        </section>
+        
+        <section id="solution" class="mb-20">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4" style="color: #004e92;">The Path Forward: The We Are Eden Solution</h2>
+                <p class="max-w-3xl mx-auto text-lg text-gray-600">We provide a multi-layered approach to embed lasting cultural change and provide immediate, actionable support.</p>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="bg-white p-8 rounded-2xl shadow-lg border-t-4 border-blue-400">
+                    <h3 class="text-2xl font-bold text-[#000428] mb-4">The Manager's Playbook</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="text-lg font-bold text-green-600 mb-2">DO ✔</h4>
+                            <ul class="list-disc list-inside space-y-2 text-gray-600">
+                                <li>Build trust with regular 1-1s.</li>
+                                <li>Ask open, gentle questions.</li>
+                                <li>Listen with empathy.</li>
+                                <li>Signpost to official support.</li>
+                                <li>Maintain confidentiality.</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-bold text-red-600 mb-2">DON'T ✖</h4>
+                             <ul class="list-disc list-inside space-y-2 text-gray-600">
+                                <li>Make assumptions.</li>
+                                <li>Ask intrusive medical questions.</li>
+                                <li>Breach confidentiality.</li>
+                                <li>Try to diagnose.</li>
+                                <li>Jump to performance management.</li>
+                            </ul>
+                        </div>
+                     </div>
+                </div>
+                <div class="bg-white p-8 rounded-2xl shadow-lg border-t-4 border-blue-400">
+                     <h3 class="text-2xl font-bold text-[#000428] mb-4">Toolkit of Reasonable Adjustments</h3>
+                     <p class="text-gray-600 mb-4">Our training and AI tools help you implement low-cost, high-impact solutions.</p>
+                     <ul class="space-y-3 text-gray-600">
+                        <li class="flex items-start"><span class="text-2xl mr-3">⏰</span> <div><span class="font-semibold text-[#004e92]">Flexibility:</span> Flexible start/finish times, hybrid work, more frequent breaks.</div></li>
+                        <li class="flex items-start"><span class="text-2xl mr-3">💨</span> <div><span class="font-semibold text-[#004e92]">Environment:</span> Desk fan, access to a quiet room, easy access to facilities.</div></li>
+                        <li class="flex items-start"><span class="text-2xl mr-3">📊</span> <div><span class="font-semibold text-[#004e92]">Workload:</span> Temporary adjustment of duties, re-prioritising tasks.</div></li>
+                     </ul>
+                </div>
+            </div>
+        </section>
+
+        <footer class="text-center border-t pt-12">
+             <h2 class="text-3xl font-bold" style="color: #000428;">Protect Your People. Protect Your Profit.</h2>
+             <p class="text-gray-600 my-4 max-w-2xl mx-auto">Stop leaving billions on the table. Let us show you how to turn a hidden liability into your greatest strength.</p>
+             <div class="my-8 flex flex-wrap justify-center gap-4">
+                <a href="mailto:fari@we-are-eden.com?subject=LMF%20Awards%20Follow-Up:%20PolicyPulse%20Demo%20Request" class="inline-block bg-blue-600 text-white font-bold py-3 px-8 rounded-lg text-lg hover:bg-blue-700 transition-colors">Request a Demo</a>
+                <a href="https://www.we-are-eden.com/online-courses" target="_blank" class="inline-block bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-lg text-lg hover:bg-gray-300 transition-colors">View Online Courses</a>
+                <a href="https://www.we-are-eden.com/how-we-help-you" target="_blank" class="inline-block bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-lg text-lg hover:bg-gray-300 transition-colors">How We Help</a>
+             </div>
+             
+             <div class="max-w-4xl mx-auto mt-12">
+                 <h3 class="text-lg font-semibold text-gray-700 mb-4">Contact Our Team</h3>
+                 <div class="flex flex-col md:flex-row justify-around items-center space-y-6 md:space-y-0">
+                     <div class="text-center">
+                         <p class="font-bold" style="color: #000428;">Farirai Gora, <span class="font-normal">Bsc, Dip CII, CSPO</span></p>
+                         <p class="text-sm text-gray-500">Founder</p>
+                         <a href="https://www.linkedin.com/in/fariraigora/" target="_blank" class="text-blue-600 hover:underline"><span class="linkedin-icon">in</span> LinkedIn</a>
+                     </div>
+                     <div class="text-center">
+                         <p class="font-bold" style="color: #000428;">Nnamdi Odozi, <span class="font-normal">FIA FRM</span></p>
+                         <p class="text-sm text-gray-500">AI & Machine Learning Lead</p>
+                         <a href="https://www.linkedin.com/in/nnamdi-odozi-fia/" target="_blank" class="text-blue-600 hover:underline"><span class="linkedin-icon">in</span> LinkedIn</a>
+                     </div>
+                      <div class="text-center">
+                         <p class="font-bold" style="color: #000428;">Ai Niimura</p>
+                         <p class="text-sm text-gray-500">Product & Engineering Consultant</p>
+                         <a href="https://www.linkedin.com/in/ai-n-34062a242/" target="_blank" class="text-blue-600 hover:underline"><span class="linkedin-icon">in</span> LinkedIn</a>
+                     </div>
+                 </div>
+             </div>
+        </footer>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            
+            const universalOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#000428' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(tooltipItems) {
+                                const item = tooltipItems[0];
+                                let label = item.chart.data.labels[item.dataIndex];
+                                if (Array.isArray(label)) { return label.join(' '); }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: { ticks: { color: '#004e92' }, grid: { color: '#e5e7eb' } },
+                    x: { ticks: { color: '#004e92' }, grid: { display: false } }
+                }
+            };
+            
+            function wrapLabel(str, maxWidth) {
+                if (str.length <= maxWidth) return str;
+                const words = str.split(' ');
+                const lines = [];
+                let currentLine = '';
+                for (const word of words) {
+                    if ((currentLine + word).length > maxWidth) {
+                        lines.push(currentLine.trim());
+                        currentLine = '';
+                    }
+                    currentLine += word + ' ';
+                }
+                lines.push(currentLine.trim());
+                return lines;
+            }
+
+            new Chart(document.getElementById('absenceReasonChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: ['Period Symptoms', 'Menopause Symptoms'],
+                    datasets: [
+                        {
+                            label: 'Took time off work (%)',
+                            data: [12.5, 100],
+                            backgroundColor: '#004e92',
+                        },
+                        {
+                            label: wrapLabel('Gave a different reason for absence (%)', 20),
+                            data: [4.4, 59],
+                            backgroundColor: '#4286f4',
+                        }
+                    ]
+                },
+                options: { ...universalOptions }
+            });
+
+            new Chart(document.getElementById('attritionChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: [wrapLabel('Left jobs due to Menopause (UK)', 20), wrapLabel('Considered leaving due to Fertility treatment', 20)],
+                    datasets: [{
+                        label: 'Number of Employees (in thousands)',
+                        data: [900, 0],
+                        backgroundColor: '#004e92',
+                        yAxisID: 'y',
+                    }, {
+                        label: '% of Employees',
+                        data: [0, 38],
+                        backgroundColor: '#ade8f4',
+                        yAxisID: 'y1',
+                    }]
+                },
+                options: {
+                    ...universalOptions,
+                    scales: {
+                        x: { ticks: { color: '#004e92' } },
+                        y: {
+                            type: 'linear', display: true, position: 'left',
+                            title: { display: true, text: 'Total Women (in thousands)', color: '#004e92' },
+                        },
+                        y1: {
+                            type: 'linear', display: true, position: 'right',
+                            title: { display: true, text: '% of respondents', color: '#004e92' },
+                            grid: { drawOnChartArea: false }, max: 100
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
