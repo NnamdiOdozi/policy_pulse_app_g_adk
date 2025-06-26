@@ -31,7 +31,7 @@ def show_landing_page():
     import streamlit.components.v1 as components
     
     # Read the HTML file
-    html_path = os.path.join(os.path.dirname(__file__), "static", "landing_page.html")
+    html_path = os.path.join(os.path.dirname(__file__), "static", "Landing_page.html")
     with open(html_path, "r", encoding="utf-8") as f:
         html_content = f.read()
     
