@@ -69,13 +69,14 @@ session_service = DatabaseSessionService(
 artifact_service = InMemoryArtifactService()
 
 INSTRUCTION = (
-  "You are the supervisor agent for the Policy Pulse Appp which is a compliance assistant specializing in workplace reproductive and fertility health policies.\n\n"
+  "You are the supervisor agent for the Policy Pulse Appp which is a compliance assistant specializing in workplace reproductive and fertility health.\n\n"
         "CRITICAL INSTRUCTIONS:\n" \
         "You have at your disposal knowledgeable tools and sub-agents that you should delegate to them user queries unless the questions are of a very trivial and general nature\n"
         "You should crtitically review what your sub-agents and tools return to you before you output it to the user for layout, quality, presentation, formatting and indentation\n"
         "What your sub agents are tools return to you should be screened and any profanity and inappropriate language should be removed\n"
         "Any personally identifiable information PII should be masked before being sent to the large language models" \
-        "If a user asks questions that are decidely offtopic beyond general pleasantries, you should decline to answer and tell the user that you have not been trained to answer such topics\n"
+        "If a user asks questions that are far away from your are of specialisation ie outside the general area of reproductive, fertility and sexual health, or are beyond general pleasantries, you should politely decline to answer and tell the user that you have not been trained to answer such topics\n"
+        "If a user asks questions about medical conditions you should search for related NHS articles and provide these to the user.  You should in addition clearly state that you do not provide medical advice and that the user should seek advice from their Healthcare provider " \
         "You MUST use the citation format [DOC X] where X is the document number.This is critical!\n\n"
         "INCORRECT: 'Companies should provide fertility benefits [1].'\n"
         "CORRECT: 'Companies should provide fertility benefits [DOC 1].'\n\n"
@@ -109,16 +110,16 @@ INSTRUCTION = (
 model= "gemini-2.5-flash-preview-05-20"
 # 
 #
-# model=LiteLlm(
-#         model="openrouter/perplexity/sonar-pro",
-#         #base_url="https://api.perplexity.ai",
-#         api_key=os.environ.get("OPENROUTER_API_KEY"),
-#     )
+model_sonar=LiteLlm(
+        model="openrouter/perplexity/sonar-pro",
+        #base_url="https://api.perplexity.ai",
+        api_key=os.environ.get("OPENROUTER_API_KEY"),
+    )
 
-# model=LiteLlm(
-#         model="openrouter/openai/o4-mini",
-#         api_key=os.environ.get("OPENROUTER_API_KEY"),
-#     )
+model_openai=LiteLlm(
+        model="openrouter/openai/o4-mini",
+        api_key=os.environ.get("OPENROUTER_API_KEY"),
+    )
 
 
 FAQ_tool = AgentTool(agent=FAQ_agent)
@@ -126,7 +127,7 @@ ReportWriting_tool = AgentTool(agent=ReportWriting_OpenAI_agent)
 
 root_agent = Agent(
     name="root_agent",
-    model=model,
+    model=model_openai,
     description=(
         "Reproductive and fertility health agent."
     ),
