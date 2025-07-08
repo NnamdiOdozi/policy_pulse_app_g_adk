@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Reproductive Health Policy Schema",
+  "type": "object",
+  "properties": {
+    "policyTitle": {
+      "type": "object",
+      "description": "Main document title",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Policy title (e.g. 'REPRODUCTIVE HEALTH POLICY')"
+        },
+        "formatting": {
+          "type": "array",
+          "description": "Formatting instructions for the title",
+          "items": {
+            "type": "string",
+            "enum": ["capitalized", "underlined"]
+          },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "required": ["text", "formatting"],
+      "additionalProperties": false
+    },
+    "policyVersion": {
+      "type": "string",
+      "description": "Version or date identifier for the policy (e.g. 'v1.0 – July 2025')"
+    },
+    "sections": {
+      "type": "array",
+      "description": "Top-level sections, in order",
+      "minItems": 12,
+      "items": {
+        "$ref": "#/definitions/section"
+      }
+    }
+  },
+  "required": ["policyTitle", "sections"],
+  "additionalProperties": false,
+  "definitions": {
+    "section": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "enum": [
+            "Purpose",
+            "Scope",
+            "Policy Principles",
+            "Fertility and Family Planning Support",
+            "Pregnancy, Maternity, Miscarriage and Bereavement",
+            "Menstrual Health",
+            "Menopause",
+            "Gender-Affirming Care and Trans Inclusion",
+            "Access to Reproductive Healthcare",
+            "Legal and Regulatory Compliance",
+            "Employee Support and Resources",
+            "Review",
+            "References"
+          ],
+          "description": "Exact section heading"
+        },
+        "description": {
+          "type": "string",
+          "description": "Instruction/prompt for the LLM to generate this section’s prose"
+        },
+        "minWords": {
+          "type": "integer",
+          "minimum": 20,
+          "description": "Recommended minimum word count"
+        },
+        "maxWords": {
+          "type": "integer",
+          "minimum": 50,
+          "description": "Recommended maximum word count"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this section must appear"
+        },
+        "legalReferences": {
+          "type": "array",
+          "description": "List of UK laws/regulations to cite",
+          "items": { "type": "string" }
+        },
+        "externalResources": {
+          "type": "array",
+          "description": "List of external support links or org names",
+          "items": { "type": "string", "format": "uri" }
+        },
+        "subsections": {
+          "type": "array",
+          "description": "Nested sub-sections (if any)",
+          "items": { "$ref": "#/definitions/section" }
+        }
+      },
+      "required": ["title", "description", "minWords", "maxWords", "required"],
+      "additionalProperties": false
+    }
+  }
+}
