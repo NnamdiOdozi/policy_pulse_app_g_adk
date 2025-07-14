@@ -62,6 +62,8 @@ cffi==1.17.1
     # via
     #   argon2-cffi-bindings
     #   cryptography
+chardet==5.2.0
+    # via step-by-step-adk (pyproject.toml)
 charset-normalizer==3.4.2
     # via requests
 click==8.2.1
@@ -561,6 +563,8 @@ pymupdf==1.26.1
     # via step-by-step-adk (pyproject.toml)
 pyparsing==3.2.3
     # via httplib2
+pypdf2==3.0.1
+    # via step-by-step-adk (pyproject.toml)
 pyreadline3==3.5.4
     # via step-by-step-adk (pyproject.toml)
 pytesseract==0.3.13

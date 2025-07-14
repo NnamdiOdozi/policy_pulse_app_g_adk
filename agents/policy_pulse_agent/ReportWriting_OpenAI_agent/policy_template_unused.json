@@ -32,7 +32,7 @@
     "sections": {
       "type": "array",
       "description": "Top-level sections, in order",
-      "minItems": 12,
+      "minItems": 3,
       "items": {
         "$ref": "#/definitions/section"
       }

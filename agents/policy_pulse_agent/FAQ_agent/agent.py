@@ -46,7 +46,7 @@ INSTRUCTION = (
 
 FAQ_agent = Agent(
     name="FAQ_agent",
-    model="gemini-2.0-flash-lite",
+    model="gemini-2.5-pro",
     description=(
         "Agent which answers FAQ questions on the subject of reproductive and fertility health."
     ),
