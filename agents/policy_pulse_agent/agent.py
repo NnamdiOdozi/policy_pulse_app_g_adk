@@ -26,9 +26,8 @@ from google.adk.artifacts.in_memory_artifact_service import InMemoryArtifactServ
 from google.adk.tools import FunctionTool, agent_tool
 from google.adk.tools.agent_tool import AgentTool
 from google.genai import types
-from .FAQ_agent import FAQ_agent
-from .ReportWriting_agent import ReportWriting_agent
-from .ReportWriting_OpenAI_agent import ReportWriting_OpenAI_agent
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # Add this path manipulation
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -37,15 +36,31 @@ sys.path.insert(0, os.path.abspath(project_root))
 
 from sqlalchemy import create_engine  # This will work - SQLAlchemy is already installed
 
-from .tools import RetrieveContextTool
+from agents.policy_pulse_agent.tools import RetrieveContextTool
+from agents.policy_pulse_agent.FAQ_agent import FAQ_agent
+from agents.policy_pulse_agent.ReportWriting_agent import ReportWriting_agent
+from agents.policy_pulse_agent.ReportWriting_OpenAI_agent import ReportWriting_OpenAI_agent
 
 APP_NAME = "policy_pulse_app"
 USER_ID = "default_user"
+
 
 # Read your DB URL from env
 db_url = os.environ.get("DATABASE_URL")  # e.g. "postgresql://user:pass@host:5432/dbname"
 if not db_url:
     raise RuntimeError("Please set DATABASE_URL in your .env")
+
+# Shared database connection function for use in auth.py and session_utils.py
+def get_db_connection():
+    """Get database connection with robust configuration"""
+    return psycopg2.connect(
+        db_url, 
+        cursor_factory=RealDictCursor,
+        sslmode="require",
+        keepalives_idle=60,
+        keepalives_interval=15,
+        keepalives_count=5
+    )
 
 # Instantiate the persistent session service
 from google.adk.sessions import DatabaseSessionService

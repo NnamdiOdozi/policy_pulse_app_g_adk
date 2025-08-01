@@ -1,4 +1,5 @@
 import os
+import sys
 import asyncio
 import secrets
 import uuid
@@ -6,10 +7,11 @@ from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-def get_db_connection():
-    """Get database connection"""
-    db_url = os.environ.get("DATABASE_URL")
-    return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+# Add project root to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
+from agents.policy_pulse_agent.agent import get_db_connection
 
 def create_new_session(user_id):
     """Create a new ADK session for the user"""

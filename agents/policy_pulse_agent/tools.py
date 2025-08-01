@@ -10,7 +10,7 @@ project_root = os.path.join(current_dir, '..' , '..')
 sys.path.insert(0, os.path.abspath(project_root))
 
 
-from src_pulse.ai_agent import retrieve_relevant_chunks
+from old_pulse.ai_agent import retrieve_relevant_chunks
 
 def _retrieve_context(query: str) -> str:
     """

@@ -1,14 +1,19 @@
 from pinecone import Pinecone
 import requests
 import os
+import sys
 import datetime
+
+# Add project root to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 # Load environment variables
 from dotenv import load_dotenv
 load_dotenv()
 
 # Import session manager
-from .session_manager import SessionManager
+from old_pulse.session_manager import SessionManager
 
 # Get API keys from environment variables
 PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")

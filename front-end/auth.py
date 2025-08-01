@@ -1,14 +1,17 @@
 import hashlib
 import secrets
-import os
+import os, sys
 from datetime import datetime
-import psycopg2
-from psycopg2.extras import RealDictCursor
 
-def get_db_connection():
-    """Get database connection"""
-    db_url = os.environ.get("DATABASE_URL")
-    return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+# Add project root to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
+from agents.policy_pulse_agent.agent import get_db_connection
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
 
 def hash_password(password):
     """Hash password with salt"""

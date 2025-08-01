@@ -12,9 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Add this path manipulation
+
+import os
+import sys
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(current_dir, '..' , '..', '..')
+sys.path.insert(0, os.path.abspath(project_root))
+
 
 from google.adk.agents import Agent
-from ..tools import RetrieveContextTool
+from agents.policy_pulse_agent.tools import RetrieveContextTool
 
 INSTRUCTION = (
   "You are a very knowledgeable compliance assistant specializing in workplace reproductive and fertility health.\n\n"
