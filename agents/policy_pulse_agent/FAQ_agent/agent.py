@@ -11,17 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 
+from google.adk.models.lite_llm import LiteLlm
 from google.adk.agents import Agent
-from google.adk.tools import FunctionTool, agent_tool, google_search
+from google.adk.tools import  google_search
 from google.genai import types
-from ..tools import RetrieveContextTool
+from ..tools import  search_with_tavily, search_with_exa, _retrieve_context
 
 
 INSTRUCTION = (
         "You are an general purpose assistant specializing in workplace reproductive and fertility health.\n\n"
+        "You have a RAG retrieval tool and a web search tool that you should use.\n\n"
         "CRITICAL INSTRUCTIONS:\n"
-         "You MUST use the citation format [DOC X] where X is the document number.This is critical!\n\n"
+         "You MUST use the citation format [DOC X] where X is the document number. The source list at the botton should also include the DOC number for each source.This is critical!\n\n"
         "INCORRECT: 'Companies should provide fertility benefits [1].'\n"
         "CORRECT: 'Companies should provide fertility benefits [DOC 1].'\n\n"
         "INCORRECT: 'Reproductive health policies should be inclusive [DOCUMENT 2].'\n"
@@ -45,9 +48,15 @@ INSTRUCTION = (
         #"- Please indicate what LLM model was used in generating your answer. By LLM model i mean models like Gemini, Chat GPT, Claude, Perplexity etc
     )
 
+model="gemini-2.5-flash"
+model_openai=LiteLlm(
+        model="openrouter/openai/gpt-4o-mini",
+        api_key=os.environ.get("OPENROUTER_API_KEY"),
+    )
+
 FAQ_agent = Agent(
     name="FAQ_agent",
-    model="gemini-2.5-flash",
+    model=model,
     description=(
         "Agent which answers FAQ questions on the subject of reproductive and fertility health."
     ),
@@ -55,5 +64,5 @@ FAQ_agent = Agent(
     generate_content_config=types.GenerateContentConfig(
         temperature=0.3,  # Adjust as needed (0.0-1.0)
     ),
-    tools=[google_search, RetrieveContextTool]
+    tools=[search_with_tavily, _retrieve_context]
 )

@@ -14,9 +14,8 @@
 
 import os
 from google.adk.agents import Agent
-from google.adk.tools import FunctionTool, agent_tool, google_search
 from google.adk.models.lite_llm import LiteLlm
-from ..tools import RetrieveContextTool
+from ..tools import search_with_tavily, search_with_exa, _retrieve_context
 
 
 model=LiteLlm(
@@ -26,7 +25,7 @@ model=LiteLlm(
 
 INSTRUCTION = (
   "You are a compliance assistant that WRITES COMPLETE POLICY DOCUMENTS.\n\n"
-    
+    "You have a retrieve context tool to retrieve from a knowledge store. you also have a search function that allows you serach the internet.\n\n"
     "CRITICAL: You must generate the ACTUAL FULL POLICY CONTENT, not descriptions or summaries.\n\n"
     
     "TEMPLATE FOLLOWING RULES:\n"
@@ -111,7 +110,7 @@ INSTRUCTION = (
     "5. Employee Support and Resources\n"
     "6. Review and Updates\n\n"
     
-    "Citations: Use [DOC X] format for any sources referenced.\n"
+    "Citations: Use [DOC X] format for any sources referenced. The source list at the botton should also include the DOC number for each source\n"
     f"LLM Model: Always end with 'Generated using {model.model}.'\n"
 )
 
@@ -125,5 +124,5 @@ ReportWriting_OpenAI_agent = Agent(
         "Agent which long-form and research type writing in order to draft reports, policies etc."
     ),
     instruction=INSTRUCTION,
-    tools=[RetrieveContextTool],
+    tools=[search_with_tavily, _retrieve_context],
 )

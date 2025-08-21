@@ -24,13 +24,13 @@ sys.path.insert(0, os.path.abspath(project_root))
 
 from google.adk.agents import Agent
 from google.adk.tools import FunctionTool, agent_tool, google_search
-from agents.policy_pulse_agent.tools import RetrieveContextTool
+from agents.policy_pulse_agent.tools import search_with_tavily, search_with_exa, _retrieve_context
 
 INSTRUCTION = (
   "You are a very knowledgeable compliance assistant specializing in workplace reproductive and fertility health.\n\n"
-        "You have access to a RetrieveContextTool that allows you to retrieve curated documents on the subject from a Vector database. You should always make use of this to ground and supplement your exsiting knowlegde\n"
+        "You have access to a retrieve context tool that allows you to retrieve curated documents on the subject from a Vector database. You should always make use of this to ground and supplement your exsiting knowledge. You also have a search tool that allows you serach the internet\n"
         "CRITICAL INSTRUCTIONS:\n" \
-        "You MUST use the citation format [DOC X] where X is the document number.This is critical!\n\n"
+        "You MUST use the citation format [DOC X] where X is the document number. The source list at the botton should also include the DOC number for each source.This is critical!\n\n"
         "INCORRECT: 'Companies should provide fertility benefits [1].'\n"
         "CORRECT: 'Companies should provide fertility benefits [DOC 1].'\n\n"
         "INCORRECT: 'Reproductive health policies should be inclusive [DOCUMENT 2].'\n"
@@ -62,5 +62,5 @@ ReportWriting_agent = Agent(
         "Agent which long-form and research type writing in prder to draft reports, policies etc."
     ),
     instruction=INSTRUCTION,
-    tools=[RetrieveContextTool]
+    tools=[search_with_tavily, _retrieve_context]
 )

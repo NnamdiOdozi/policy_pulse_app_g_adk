@@ -37,7 +37,9 @@ sys.path.insert(0, os.path.abspath(project_root))
 from sqlalchemy import create_engine  # This will work - SQLAlchemy is already installed
 from sqlalchemy.pool import QueuePool
 
-from agents.policy_pulse_agent.tools import RetrieveContextTool
+
+from .tools import search_with_tavily, search_with_exa, _retrieve_context
+#
 from agents.policy_pulse_agent.FAQ_agent import FAQ_agent
 from agents.policy_pulse_agent.ReportWriting_agent import ReportWriting_agent
 from agents.policy_pulse_agent.ReportWriting_OpenAI_agent import ReportWriting_OpenAI_agent
@@ -187,9 +189,9 @@ INSTRUCTION = (
 
 
         "CRITICAL INSTRUCTIONS:\n" \
-        "You have at your disposal knowledgeable tools and sub-agents that you should delegate to them user queries unless the questions are of a very trivial and general nature\n"
+        "You have at your disposal knowledgeable tools and sub-agents that you should delegate to them user queries unless the questions are of a very trivial and general nature. Note that your sub-agnets have tools that allow them to search the internet for up-to-date information and also to ground responses\n"
         "You should crtitically review what your sub-agents and tools return to you before you output it to the user for layout, quality, presentation, formatting and indentation\n"
-        "What your sub agents are tools return to you should be screened and any profanity and inappropriate language should be removed\n"
+        "What your sub agents or tools return to you should be screened and any profanity and inappropriate language should be removed\n"
         "Any personally identifiable information PII should be masked before being sent to the large language models" \
         "If a user asks questions that are far away from your are of specialisation ie outside the general area of reproductive, fertility and sexual health, or are beyond general pleasantries, you should politely decline to answer and tell the user that you have not been trained to answer such topics\n"
         "If a user asks questions about medical conditions you should search for related NHS articles and provide these to the user.  You should in addition clearly state that you do not provide medical advice and that the user should seek advice from their Healthcare provider " \
@@ -212,7 +214,7 @@ INSTRUCTION = (
         "- Ensure that sources are cited with clear document numbers\n"
         #"- Refuse to speculate beyond what is explicitly stated in the documents\n"
        
-        "- Clearly LIST the primary sources used for the summary. You must include details like authors, publication year and direct URL if available. If these details are not available you should not speculate as to the reasons for this and should simply say unvailable. You should not say if the documents rae traninig documents or internal documents\n"
+        "- Clearly LIST the primary sources used for the summary. You must include details like [DOC number] authors, publication year and direct URL if available. The [DOC] numbers should be in order eg 1,2,3 and you should not skip over any numbers. If these details are not available you should not speculate as to the reasons for this and should simply say unvailable. You should not say if the documents are traninig documents or internal documents\n"
         "- Please indicate what LLM model was used in generating your answer. By LLM model i mean models like Gemini, Chat GPT, Claude, Perplexity etc\n"
 
 )

@@ -1,3 +1,6 @@
+[tool.uv]
+link-mode = "copy"  # Avoid hardlink warnings on Windows/OneDrive
+
 [project]
 name = "step-by-step-adk"
 version = "0.1.0"
@@ -33,4 +36,8 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "chardet>=5.0.0",
+    "exa-py>=1.0.7,<2.0.0",           # Exa AI - latest stable 1.0.7, allows minor updates
+    "google-search-results>=2.4.2,<3.0.0",  # SerpAPI - latest 2.4.2, legacy but stable
+    "requests>=2.32.0,<3.0.0",       # HTTP library - latest 2.32.5, widely used
+    "multidict>=6.1.0,<6.5.0",
 ]
