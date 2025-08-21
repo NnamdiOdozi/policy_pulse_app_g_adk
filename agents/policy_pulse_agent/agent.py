@@ -23,7 +23,7 @@ import asyncio
 from google.adk.runners import Runner
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.artifacts.in_memory_artifact_service import InMemoryArtifactService
-from google.adk.tools import FunctionTool, agent_tool
+from google.adk.tools import FunctionTool, agent_tool, google_search
 from google.adk.tools.agent_tool import AgentTool
 from google.genai import types
 import psycopg2
@@ -35,6 +35,7 @@ project_root = os.path.join(current_dir, '..' , '..')
 sys.path.insert(0, os.path.abspath(project_root))
 
 from sqlalchemy import create_engine  # This will work - SQLAlchemy is already installed
+from sqlalchemy.pool import QueuePool
 
 from agents.policy_pulse_agent.tools import RetrieveContextTool
 from agents.policy_pulse_agent.FAQ_agent import FAQ_agent
@@ -44,14 +45,13 @@ from agents.policy_pulse_agent.ReportWriting_OpenAI_agent import ReportWriting_O
 APP_NAME = "policy_pulse_app"
 USER_ID = "default_user"
 
-
 # Read your DB URL from env
 db_url = os.environ.get("DATABASE_URL")  # e.g. "postgresql://user:pass@host:5432/dbname"
 if not db_url:
     raise RuntimeError("Please set DATABASE_URL in your .env")
 
 # Shared database connection function for use in auth.py and session_utils.py
-def get_db_connection():
+def get_db_connection_old():
     """Get database connection with robust configuration"""
     return psycopg2.connect(
         db_url, 
@@ -61,6 +61,50 @@ def get_db_connection():
         keepalives_interval=15,
         keepalives_count=5
     )
+
+# Create pool once at module level
+_engine = None
+
+class PooledConnection:
+    """Wrapper to make SQLAlchemy connection work with 'with' statements"""
+    def __init__(self, raw_conn):
+        self.raw_conn = raw_conn
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.raw_conn.close()
+    
+    def cursor(self):
+        # Force RealDictCursor when creating cursor
+        return self.raw_conn.cursor(cursor_factory=RealDictCursor)
+    
+    def commit(self):
+        return self.raw_conn.commit()
+
+def get_db_connection():
+    """Get database connection with pooling"""
+    global _engine
+    if _engine is None:
+        _engine = create_engine(
+            db_url,
+            poolclass=QueuePool,
+            pool_size=5,                    # 5 connections in pool
+            max_overflow=10,                # Up to 15 total connections
+            pool_recycle=240,               # Match your ADK settings
+            pool_pre_ping=True,             # Test connections before use
+            connect_args={
+                "sslmode": "require",
+                "keepalives_idle": 60,
+                "keepalives_interval": 15,
+                "keepalives_count": 5,
+            }
+        )
+   
+    # Return wrapped connection that supports context manager
+    raw_conn = _engine.raw_connection()
+    return PooledConnection(raw_conn)
 
 # Instantiate the persistent session service
 from google.adk.sessions import DatabaseSessionService

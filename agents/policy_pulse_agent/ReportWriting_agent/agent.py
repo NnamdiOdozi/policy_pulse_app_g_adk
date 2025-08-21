@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.abspath(project_root))
 
 
 from google.adk.agents import Agent
+from google.adk.tools import FunctionTool, agent_tool, google_search
 from agents.policy_pulse_agent.tools import RetrieveContextTool
 
 INSTRUCTION = (
@@ -56,7 +57,7 @@ INSTRUCTION = (
 
 ReportWriting_agent = Agent(
     name="ReportWriting_agent",
-    model="gemini-2.5-flash-preview-05-20",
+    model="gemini-2.5-flash",
     description=(
         "Agent which long-form and research type writing in prder to draft reports, policies etc."
     ),

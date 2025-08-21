@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from google.adk.agents import Agent
+from google.adk.tools import FunctionTool, agent_tool, google_search
 from google.genai import types
 from ..tools import RetrieveContextTool
 
@@ -46,7 +47,7 @@ INSTRUCTION = (
 
 FAQ_agent = Agent(
     name="FAQ_agent",
-    model="gemini-2.5-pro",
+    model="gemini-2.5-flash",
     description=(
         "Agent which answers FAQ questions on the subject of reproductive and fertility health."
     ),
@@ -54,5 +55,5 @@ FAQ_agent = Agent(
     generate_content_config=types.GenerateContentConfig(
         temperature=0.3,  # Adjust as needed (0.0-1.0)
     ),
-    tools=[RetrieveContextTool]
+    tools=[google_search, RetrieveContextTool]
 )
