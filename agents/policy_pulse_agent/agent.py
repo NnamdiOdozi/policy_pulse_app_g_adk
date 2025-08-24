@@ -13,9 +13,22 @@
 # limitations under the License.
 import os
 import sys
+
 # Load environment variables
 from dotenv import load_dotenv
 load_dotenv()
+
+# import logging
+# # Configure detailed logging
+# logging.basicConfig(level=logging.DEBUG)
+# logger = logging.getLogger(__name__)
+
+import agentops
+# Initialize AgentOps before defining agents
+# agentops.init(
+#     api_key=os.getenv("AGENTOPS_API_KEY"),
+#     trace_name="policy-pulse-debug"
+# )
 
 from google.adk.agents import Agent
 from google.adk.sessions import DatabaseSessionService
@@ -43,6 +56,8 @@ from .tools import search_with_tavily, search_with_exa, _retrieve_context
 from agents.policy_pulse_agent.FAQ_agent import FAQ_agent
 from agents.policy_pulse_agent.ReportWriting_agent import ReportWriting_agent
 from agents.policy_pulse_agent.ReportWriting_OpenAI_agent import ReportWriting_OpenAI_agent
+
+
 
 APP_NAME = "policy_pulse_app"
 USER_ID = "default_user"
@@ -178,6 +193,7 @@ INSTRUCTION = (
     "- Write complete, professional policy content\n"
     "- Do not write meta-commentary or descriptions\n"
     "- Start directly with the policy title and content'\n\n"
+    "- Clearly LIST the primary sources used if they are referenced in the body of the document. You must include details like [DOC number] authors, publication year and direct URL if available. The [DOC] numbers should be in order eg 1,2,3 and you should not skip over any numbers. If these details are not available you should not speculate as to the reasons for this and should simply say unvailable. You should not say if the documents are traninig documents or internal documents\n"
     
     "5. DOCUMENT UPLOAD HANDLING:\n"
     "If user uploads documents, acknowledge and include context in the delegation to ReportWriting agent.\n\n"
@@ -214,7 +230,7 @@ INSTRUCTION = (
         "- Ensure that sources are cited with clear document numbers\n"
         #"- Refuse to speculate beyond what is explicitly stated in the documents\n"
        
-        "- Clearly LIST the primary sources used for the summary. You must include details like [DOC number] authors, publication year and direct URL if available. The [DOC] numbers should be in order eg 1,2,3 and you should not skip over any numbers. If these details are not available you should not speculate as to the reasons for this and should simply say unvailable. You should not say if the documents are traninig documents or internal documents\n"
+        "- Clearly LIST the primary sources used for the summary. You must include details like [DOC number] authors, publication year and URL if available. The [DOC] numbers should be in order eg 1,2,3 and you should not skip over any numbers. If these details are not available you should not speculate as to the reasons for this and should simply say unvailable. You should not say if the documents are traninig documents or internal documents\n"
         "- Please indicate what LLM model was used in generating your answer. By LLM model i mean models like Gemini, Chat GPT, Claude, Perplexity etc\n"
 
 )

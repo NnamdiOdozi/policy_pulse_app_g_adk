@@ -13,9 +13,16 @@
 # limitations under the License.
 
 import os
+
 from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
 from ..tools import search_with_tavily, search_with_exa, _retrieve_context
+
+import logging
+
+# Configure detailed logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 model=LiteLlm(
@@ -52,6 +59,7 @@ INSTRUCTION = (
     "- Include specific procedures and requirements\n"
     "- Reference relevant UK employment law where applicable\n"
     "- Provide concrete examples and guidance\n\n"
+    "- Clearly LIST the primary sources used if they are referenced in the body of the document. You must include details like [DOC number] authors, publication year and direct URL if available. The [DOC] numbers should be in order eg 1,2,3 and you should not skip over any numbers. If these details are not available you should not speculate as to the reasons for this and should simply say unvailable. You should not say if the documents are traninig documents or internal documents\n"
     
     "FORBIDDEN BEHAVIORS:\n"
     "- DO NOT write 'Here is the draft policy...'\n"
@@ -112,6 +120,10 @@ INSTRUCTION = (
     
     "Citations: Use [DOC X] format for any sources referenced. The source list at the botton should also include the DOC number for each source\n"
     f"LLM Model: Always end with 'Generated using {model.model}.'\n"
+
+    """ Tool calling. Always announce your tool usage:
+        - Before calling a tool: "🔧 CALLING: [tool_name] with query: [query],
+        - After getting results: "✅ COMPLETED: [tool_name] returned [summary]"""
 )
 
 

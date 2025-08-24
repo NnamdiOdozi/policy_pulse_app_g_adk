@@ -280,6 +280,20 @@ def _retrieve_context(query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"error": f"Internal search failed: {str(e)}"}
 
+from google.adk.agents import Agent
+from google.adk.tools import google_search
+from google.adk.tools.agent_tool import AgentTool
+
+search_agent = Agent(
+    model="gemini-2.5-flash",
+    name="search_agent",
+    instruction="""
+    You're a specialist in Google Search.
+    """,
+    tools=[google_search],
+)
+search_with_google = AgentTool(search_agent)
+
 
 # ========== ADK TOOL INTEGRATION ==========
 # Note: In your agent.py, use these functions directly in the tools list:
@@ -302,5 +316,6 @@ __all__ = [
     'search_with_tavily',
     'search_with_exa', 
     'search_with_serpapi',
+    'search_with_google',
     '_retrieve_context'
 ]

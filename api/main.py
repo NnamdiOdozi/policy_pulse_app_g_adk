@@ -1,7 +1,10 @@
 # backend/api/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import chat, sessions, auth
+# Import the router objects directly
+from api.routes.chat import router as chat_router
+from api.routes.sessions import router as sessions_router
+from api.routes.auth import router as auth_router
 
 app = FastAPI(title="Policy Pulse API", version="1.0.0")
 
@@ -14,10 +17,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include your routes
-app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
-app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
-app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
+# Include your routes with the router objects
+app.include_router(chat_router, prefix="/api/v1", tags=["chat"])
+app.include_router(sessions_router, prefix="/api/v1", tags=["sessions"])
+app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
 
 @app.get("/api/v1/health")
 async def health_check():
@@ -25,4 +28,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("api.main:app", host="127.0.0.1", port=8001, reload=True)  # Using port 8001 to avoid conflict with ADK

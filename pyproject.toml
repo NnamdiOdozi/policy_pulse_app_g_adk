@@ -40,4 +40,7 @@ dependencies = [
     "google-search-results>=2.4.2,<3.0.0",  # SerpAPI - latest 2.4.2, legacy but stable
     "requests>=2.32.0,<3.0.0",       # HTTP library - latest 2.32.5, widely used
     "multidict>=6.1.0,<6.5.0",
+    # Debugging/Observability
+    "agentops>=0.4.0,<1.0.0",  # Latest stable 0.4.19, allows minor updates
+
 ]
