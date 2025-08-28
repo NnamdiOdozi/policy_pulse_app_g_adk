@@ -16,7 +16,7 @@ import os
 
 from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
-from ..tools import search_with_tavily, search_with_exa, _retrieve_context
+from ..tools import search_with_tavily_report, search_with_exa, _retrieve_context
 
 import logging
 
@@ -32,7 +32,7 @@ model=LiteLlm(
 
 INSTRUCTION = (
   "You are a compliance assistant that WRITES COMPLETE POLICY DOCUMENTS.\n\n"
-    "You have a retrieve context tool to retrieve from a knowledge store. you also have a search function that allows you serach the internet.\n\n"
+    "You have a retrieve context tool to retrieve from a knowledge store. you also have a search function that allows you seach the internet. You MUST use both of these tools to ground your response in up to date sources and also list them in the sources.\n\n"
     "CRITICAL: You must generate the ACTUAL FULL POLICY CONTENT, not descriptions or summaries.\n\n"
     
     "TEMPLATE FOLLOWING RULES:\n"
@@ -118,11 +118,22 @@ INSTRUCTION = (
     "5. Employee Support and Resources\n"
     "6. Review and Updates\n\n"
     
-    "Citations: Use [DOC X] format for any sources referenced. The source list at the botton should also include the DOC number for each source\n"
+    "Citations: Use [DOC X] format for any sources referenced.\n"
     f"LLM Model: Always end with 'Generated using {model.model}.'\n"
+    "- Clearly LIST ALL the primary sources used for the final response that is output to the user. You should not cite more than 6 sources in the Source list although every claim in the response should be supported. You MUST use the citation format [DOC X] where X is the document number. The source list at the bottom should cover the sources that made it into the final response. For example, if three unique references are made in the response then there should be three unique resferences in the Sources list. \n" 
+        " You should include the DOC number for each source and these DOC numbers should be in consecutive number i.e DOC 1, DOC2, DOC 3 and not DOC 1 DOC 4 DOC 6 and so you may need to amend the document references that come back from your tools to effect this.This is critical!\n\n"
+        " Sources obtained from the _retrieve_context tool can be given author: ""We Are Eden"" and the rest of the metadata for such RAG documents should also be used. Sources returned by the web search function must include details like authors, publication year and URL if available \n" 
+        "- Please indicate what LLM model was used in generating your answer. By LLM model i mean models like Gemini, Chat GPT, Claude, Perplexity etc\n"
+        " Never include URLs, sources, or references unless they were directly returned by search tools. All claims requiring factual verification must use the search_with_tavily tool first, and only include references from the tool response.\n"
+        "Before making any factual claims about current information, you MUST use the search_with_tavily tool. If the search fails or returns no results, state clearly that you could not verify the information rather than providing potentially outdated information.\n"
+
+
+    
+
 
     """ Tool calling. Always announce your tool usage:
         - Before calling a tool: "🔧 CALLING: [tool_name] with query: [query],
+        - Then call the tool. 
         - After getting results: "✅ COMPLETED: [tool_name] returned [summary]"""
 )
 
@@ -136,5 +147,5 @@ ReportWriting_OpenAI_agent = Agent(
         "Agent which long-form and research type writing in order to draft reports, policies etc."
     ),
     instruction=INSTRUCTION,
-    tools=[search_with_tavily, _retrieve_context],
+    tools=[_retrieve_context, search_with_tavily_report]
 )

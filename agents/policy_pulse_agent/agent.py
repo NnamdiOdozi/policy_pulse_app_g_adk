@@ -18,17 +18,17 @@ import sys
 from dotenv import load_dotenv
 load_dotenv()
 
-# import logging
-# # Configure detailed logging
-# logging.basicConfig(level=logging.DEBUG)
-# logger = logging.getLogger(__name__)
+import logging
+# Configure detailed logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 import agentops
 # Initialize AgentOps before defining agents
-# agentops.init(
-#     api_key=os.getenv("AGENTOPS_API_KEY"),
-#     trace_name="policy-pulse-debug"
-# )
+agentops.init(
+    api_key=os.getenv("AGENTOPS_API_KEY"),
+    trace_name="policy-pulse-debug"
+)
 
 from google.adk.agents import Agent
 from google.adk.sessions import DatabaseSessionService
@@ -51,7 +51,6 @@ from sqlalchemy import create_engine  # This will work - SQLAlchemy is already i
 from sqlalchemy.pool import QueuePool
 
 
-from .tools import search_with_tavily, search_with_exa, _retrieve_context
 #
 from agents.policy_pulse_agent.FAQ_agent import FAQ_agent
 from agents.policy_pulse_agent.ReportWriting_agent import ReportWriting_agent
@@ -148,7 +147,7 @@ INSTRUCTION = (
     "You are the supervisor agent for the Policy Pulse App which is a compliance assistant specializing in workplace reproductive and fertility health.\n\n"
     
     "POLICY GENERATION WORKFLOW:\n"
-    "When a user requests a policy, guide, or guidelines, follow this process:\n\n"
+    "When a user requests a policy, guide, or guidelines, this should be handled by your report writing agent and you should follow this process:\n\n"
     
     "1. QUESTIONNAIRE PHASE:\n"
     "Ask these questions ONE AT A TIME (wait for each response):\n"
@@ -205,11 +204,12 @@ INSTRUCTION = (
 
 
         "CRITICAL INSTRUCTIONS:\n" \
-        "You have at your disposal knowledgeable tools and sub-agents that you should delegate to them user queries unless the questions are of a very trivial and general nature. Note that your sub-agnets have tools that allow them to search the internet for up-to-date information and also to ground responses\n"
+        "You have at your disposal knowledgeable tools and sub-agents that you MUST delegate to them user queries unless the questions are of a very trivial nature. Note that your sub-agents have tools that allow them to search the internet for up-to-date information and also to ground responses\n"
+        "The FAQ_agent handles short and medium-sized queries and the ReportWriting agent handles longer requests such as drafts of policies, guides and guidelines\n"
         "You should crtitically review what your sub-agents and tools return to you before you output it to the user for layout, quality, presentation, formatting and indentation\n"
         "What your sub agents or tools return to you should be screened and any profanity and inappropriate language should be removed\n"
         "Any personally identifiable information PII should be masked before being sent to the large language models" \
-        "If a user asks questions that are far away from your are of specialisation ie outside the general area of reproductive, fertility and sexual health, or are beyond general pleasantries, you should politely decline to answer and tell the user that you have not been trained to answer such topics\n"
+        "If a user asks questions that are far away from your are of specialisation ie outside the general area of reproductive, fertility, hormonal, and sexual health, or are beyond general pleasantries, you should politely decline to answer and tell the user that you have not been trained to answer such topics\n"
         "If a user asks questions about medical conditions you should search for related NHS articles and provide these to the user.  You should in addition clearly state that you do not provide medical advice and that the user should seek advice from their Healthcare provider " \
         "You MUST use the citation format [DOC X] where X is the document number.This is critical!\n\n"
         "INCORRECT: 'Companies should provide fertility benefits [1].'\n"
@@ -230,8 +230,13 @@ INSTRUCTION = (
         "- Ensure that sources are cited with clear document numbers\n"
         #"- Refuse to speculate beyond what is explicitly stated in the documents\n"
        
-        "- Clearly LIST the primary sources used for the summary. You must include details like [DOC number] authors, publication year and URL if available. The [DOC] numbers should be in order eg 1,2,3 and you should not skip over any numbers. If these details are not available you should not speculate as to the reasons for this and should simply say unvailable. You should not say if the documents are traninig documents or internal documents\n"
+        "- Clearly LIST ALL the primary sources used for the final response that is output to the user. You should not cite more than 6 sources in the Source list although every claim in the response should be supported. You MUST use the citation format [DOC X] where X is the document number. The source list at the bottom should cover the sources that made it into the final response. For example, if three unique references are made in the response then there should be three unique resferences in the Sources list. \n" 
+        " You should include the DOC number for each source and these DOC numbers should be in consecutive number i.e DOC 1, DOC2, DOC 3 and not DOC 1 DOC 4 DOC 6 and so you may need to amend the document references that come back from your tools to effect this.This is critical!\n\n"
+        " Sources obtained from the _retrieve_context tool can be given author: ""We Are Eden"" and the rest of the metadata for such RAG documents should also be used. Sources returned by the web search function must include details like authors, publication year and URL if available \n" 
         "- Please indicate what LLM model was used in generating your answer. By LLM model i mean models like Gemini, Chat GPT, Claude, Perplexity etc\n"
+        " Never include URLs, sources, or references unless they were directly returned by search tools. All claims requiring factual verification must use the search_with_tavily tool first, and only include references from the tool response.\n"
+        "Before making any factual claims about current information, you MUST use the search_with_tavily tool. If the search fails or returns no results, state clearly that you could not verify the information rather than providing potentially outdated information.\n"
+
 
 )
 
@@ -269,7 +274,7 @@ root_agent = Agent(
     instruction=INSTRUCTION,
     tools = [FAQ_tool, ReportWriting_tool],
     generate_content_config=types.GenerateContentConfig(
-        temperature=0.5,  # Adjust as needed (0.0-1.0)
+        temperature=0.2,  # Adjust as needed (0.0-1.0)
     ),
         
     #sub_agents = []
