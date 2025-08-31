@@ -330,7 +330,7 @@ class ZillizMigrationTool:
     
     def create_collection(self, collection_name: str, dimension: int = 1024):
         """
-        Create a new collection in Zilliz Cloud.
+        Create a new collection in Zilliz Cloud with proper schema for all metadata.
         
         Args:
             collection_name: Name of the collection to create
@@ -340,125 +340,69 @@ class ZillizMigrationTool:
             print(f"Collection '{collection_name}' already exists. Dropping it.")
             self.zilliz_client.drop_collection(collection_name)
         
-        # Define schema with vector field and comprehensive metadata fields
-        schema = {
-            "collection_name": collection_name,
-            "fields": [
-                {
-                    "name": "id",
-                    "type": DataType.VARCHAR,
-                    "is_primary": True,
-                    "max_length": 100
-                },
-                {
-                    "name": "text",
-                    "type": DataType.VARCHAR,
-                    "max_length": 65535
-                },
-                {
-                    "name": "filename",
-                    "type": DataType.VARCHAR,
-                    "max_length": 256
-                },
-                {
-                    "name": "file_type",
-                    "type": DataType.VARCHAR,
-                    "max_length": 20
-                },
-                {
-                    "name": "file_path",
-                    "type": DataType.VARCHAR,
-                    "max_length": 512
-                },
-                {
-                    "name": "indexed_at",
-                    "type": DataType.VARCHAR,
-                    "max_length": 30
-                },
-                {
-                    "name": "chunk_id",
-                    "type": DataType.VARCHAR,
-                    "max_length": 100
-                },
-                {
-                    "name": "section_title",
-                    "type": DataType.VARCHAR,
-                    "max_length": 256
-                },
-                {
-                    "name": "chunk_summary",
-                    "type": DataType.VARCHAR,
-                    "max_length": 512
-                },
-                {
-                    "name": "section_context",
-                    "type": DataType.VARCHAR,
-                    "max_length": 256
-                },
-                {
-                    "name": "document_summary",
-                    "type": DataType.VARCHAR,
-                    "max_length": 256
-                },
-                {
-                    "name": "related_chunks",
-                    "type": DataType.JSON
-                },
-                {
-                    "name": "semantic_keywords",
-                    "type": DataType.JSON
-                },
-                {
-                    "name": "cross_references",
-                    "type": DataType.JSON
-                },
-                {
-                    "name": "embedding",
-                    "type": DataType.FLOAT_VECTOR,
-                    "dim": dimension
-                }
-            ]
-        }
+        from pymilvus import CollectionSchema, FieldSchema, DataType
         
-        # Create the collection with optimized index parameters
+        # Create proper schema with all your metadata fields
+        fields = [
+            FieldSchema(name="id", dtype=DataType.VARCHAR, max_length=100, is_primary=True),
+            FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
+            FieldSchema(name="filename", dtype=DataType.VARCHAR, max_length=256),
+            FieldSchema(name="file_type", dtype=DataType.VARCHAR, max_length=20),
+            FieldSchema(name="file_path", dtype=DataType.VARCHAR, max_length=512),
+            FieldSchema(name="indexed_at", dtype=DataType.VARCHAR, max_length=30),
+            FieldSchema(name="chunk_id", dtype=DataType.VARCHAR, max_length=100),
+            FieldSchema(name="section_title", dtype=DataType.VARCHAR, max_length=256),
+            FieldSchema(name="chunk_summary", dtype=DataType.VARCHAR, max_length=512),
+            FieldSchema(name="section_context", dtype=DataType.VARCHAR, max_length=256),
+            FieldSchema(name="document_summary", dtype=DataType.VARCHAR, max_length=256),
+            FieldSchema(name="related_chunks", dtype=DataType.JSON),
+            FieldSchema(name="semantic_keywords", dtype=DataType.JSON),
+            FieldSchema(name="cross_references", dtype=DataType.JSON),
+            FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dimension)
+        ]
+        
+        schema = CollectionSchema(fields=fields, description="Document chunks with full metadata")
+        
+        # Create collection with proper schema
         self.zilliz_client.create_collection(
             collection_name=collection_name,
-            dimension=dimension,
-            primary_field_name="id",
-            id_type=DataType.VARCHAR,
-            vector_field_name="embedding",
-            auto_id=False,
-            metric_type="COSINE",  # COSINE similarity is often best for text embeddings
-            schema=schema
+            schema=schema,
+            consistency_level="Strong"
         )
         
-        # Create index for faster searching
-        self.zilliz_client.create_index(
-            collection_name=collection_name,
-            field_name="embedding",
-            index_type="HNSW",  # Hierarchical Navigable Small World graph
-            metric_type="COSINE",
-            params={"M": 16, "efConstruction": 200}  # Recommended HNSW parameters
-        )
+        # Create vector index
+        try:
+            index_params = {
+                "index_type": "HNSW",
+                "metric_type": "COSINE", 
+                "params": {"M": 16, "efConstruction": 200}
+            }
+            
+            self.zilliz_client.create_index(
+                collection_name=collection_name,
+                field_name="vector",
+                index_params=index_params
+            )
+            print("✅ Vector index created successfully")
+        except Exception as e:
+            print(f"⚠️ Could not create vector index: {e}")
         
-        # Create text index for TEXT_MATCH capability
-        self.zilliz_client.create_index(
-            collection_name=collection_name,
-            field_name="text",
-            index_type="INVERTED",
-            index_name="text_index",
-            params={"enable_match": True}
-        )
-        
-        # Create index on filename for faster filtering
-        self.zilliz_client.create_index(
-            collection_name=collection_name,
-            field_name="filename",
-            index_type="INVERTED",
-            index_name="filename_index"
-        )
-        
-        print(f"Collection '{collection_name}' created successfully with dimension {dimension}")
+        # Create text index for search (optional)
+        try:
+            text_index_params = {
+                "index_type": "INVERTED"
+            }
+            
+            self.zilliz_client.create_index(
+                collection_name=collection_name,
+                field_name="text",
+                index_params=text_index_params
+            )
+            print("✅ Text index created successfully")
+        except Exception as e:
+            print(f"⚠️ Could not create text index: {e}")
+    
+        print(f"Collection '{collection_name}' created successfully with {len(fields)} fields and dimension {dimension}")
     
     def generate_embeddings(self, texts: List[str], show_progress: bool = True) -> List[List[float]]:
         """
@@ -529,7 +473,7 @@ class ZillizMigrationTool:
         return chunks
     
     def insert_chunks(self, collection_name: str, chunks: List[Dict[str, Any]], 
-                     show_progress: bool = True):
+                 show_progress: bool = True):
         """
         Insert chunks with their enriched metadata and embeddings into Zilliz.
         
@@ -546,17 +490,17 @@ class ZillizMigrationTool:
         
         # Insert in batches
         batches = [(chunks[i:i + BATCH_SIZE], embeddings[i:i + BATCH_SIZE]) 
-                  for i in range(0, len(chunks), BATCH_SIZE)]
+                for i in range(0, len(chunks), BATCH_SIZE)]
         
         if show_progress:
             batches = tqdm(batches, desc="Inserting chunks")
         
         for batch_chunks, batch_embeddings in batches:
             try:
-                # Create insertion data
+                # Create insertion data using the proper schema field names
                 insert_data = []
                 for i, chunk in enumerate(batch_chunks):
-                    # Prepare the chunk with all metadata fields and embedding
+                    # Use the exact field names from schema
                     chunk_data = {
                         "id": chunk["id"],
                         "text": chunk["text"],
@@ -572,7 +516,7 @@ class ZillizMigrationTool:
                         "related_chunks": chunk["related_chunks"],
                         "semantic_keywords": chunk["semantic_keywords"],
                         "cross_references": chunk["cross_references"],
-                        "embedding": batch_embeddings[i]
+                        "vector": batch_embeddings[i]  # Vector field
                     }
                     insert_data.append(chunk_data)
                 
@@ -594,7 +538,7 @@ class ZillizMigrationTool:
         print(f"Inserted {len(chunks)} chunks into collection '{collection_name}'")
     
     def search_chunks(self, collection_name: str, query: str, limit: int = 5, 
-                     metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+                 metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Search for chunks similar to the query text.
         
@@ -609,41 +553,52 @@ class ZillizMigrationTool:
         """
         try:
             # Generate embedding for the query
-            query_embedding = self.voyage_client.embed(
+            response = self.voyage_client.embed(
                 [query], 
                 model="voyage-3-large", 
-                input_type="query",  # Use "query" input type for search queries
+                input_type="query",
                 output_dimension=1024
-            ).embeddings[0]
+            )
             
-            # Define output fields to return
+            # Handle both object and dict response formats
+            if hasattr(response, 'embeddings'):
+                query_embedding = response.embeddings[0]
+            elif isinstance(response, dict) and 'embeddings' in response:
+                query_embedding = response['embeddings'][0]
+            else:
+                raise ValueError(f"Unexpected response format from Voyage AI: {type(response)}")
+            
+            # Define output fields to return - UPDATED for default field names
             output_fields = [
                 "text", "chunk_summary", "section_title", "document_summary",
                 "filename", "file_type", "section_context", "semantic_keywords",
                 "related_chunks", "cross_references"
             ]
             
-            # Perform the search
-            search_params = {
-                "data": [query_embedding],
+            # Perform the search - UPDATED for correct parameter structure
+            search_params = [query_embedding]  # Just pass the embedding directly
+            
+            # Build search arguments
+            search_args = {
+                "collection_name": collection_name,
+                "data": search_params,
+                "anns_field": "vector",
                 "limit": limit,
                 "output_fields": output_fields
             }
             
             # Add metadata filter if provided
             if metadata_filter:
-                search_params["filter"] = metadata_filter
+                search_args["filter"] = metadata_filter  # Use 'filter' not 'expr'
             
-            search_results = self.zilliz_client.search(
-                collection_name=collection_name,
-                **search_params
-            )
+            search_results = self.zilliz_client.search(**search_args)
             
-            # Format the results
+            # Format the results - UPDATED for new response format
             formatted_results = []
             if search_results and len(search_results) > 0:
                 for hit in search_results[0]:
-                    entity = hit["entity"]
+                    # CHANGE: Updated to handle the correct response structure
+                    entity = hit.get("entity", hit)  # Handle different response formats
                     formatted_results.append({
                         "text": entity.get("text", ""),
                         "chunk_summary": entity.get("chunk_summary", ""),
@@ -655,7 +610,7 @@ class ZillizMigrationTool:
                         "semantic_keywords": entity.get("semantic_keywords", []),
                         "related_chunks": entity.get("related_chunks", []),
                         "cross_references": entity.get("cross_references", []),
-                        "score": hit["score"]
+                        "score": hit.get("score", hit.get("distance", 0))  # Handle different score field names
                     })
             
             return formatted_results
@@ -800,7 +755,7 @@ def main():
                         filter=f"chunk_id in {related_chunks}",
                         output_fields=["chunk_summary", "section_title", "filename"]
                     )
-                    for i, rel in enumerate(related_results):
+                    for i, rel in enumerate(related_results.get('data', [])):
                         print(f"Related {i+1}: {rel.get('chunk_summary', '')}")
                         print(f"Section: {rel.get('section_title', '')}")
                         print(f"From: {rel.get('filename', '')}")

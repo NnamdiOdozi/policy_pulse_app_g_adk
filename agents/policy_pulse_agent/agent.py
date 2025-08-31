@@ -313,13 +313,13 @@ if __name__ == "__main__":
             print(f"✅ Session created: {session.id}")
             
             # AWAIT the async get_session method
-            verify_session = await session_service.get_session(
+            session_data = await session_service.get_session(
                 app_name=APP_NAME,
                 user_id=USER_ID,
                 session_id=session_id
             )
             
-            if verify_session:
+            if session_data is not None:
                 print("✅ Session verified successfully")
             else:
                 print("❌ Session verification failed")
