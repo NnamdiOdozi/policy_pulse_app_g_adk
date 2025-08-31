@@ -28,6 +28,47 @@ COLLECTION_NAME = "documents_voyage_3_large"
 EMBEDDING_DIM = 1024  # Voyage 3 Large dimension
 DOCS_DIRECTORY = "Temp"  # Change to your actual directory path PolicyPulse + AVE collab
 
+
+import hashlib
+from typing import Any, List
+
+def _to_int64_pk(x: Any, *, salt: str = "") -> int:
+    """
+    Convert any stable string-like ID to a signed 63-bit int deterministically.
+    Keeps your existing 'id' field (INT64 PK) without changing schema.
+    """
+    if isinstance(x, int):
+        return x
+    s = str(x) + salt
+    # sha1 -> 160-bit -> take lower 63 bits to avoid negative overflow in signed int64
+    v = int(hashlib.sha1(s.encode("utf-8")).hexdigest(), 16) & ((1 << 63) - 1)
+    return v
+
+def _build_textmatch_filter_if_supported(client, collection_name: str, keywords: List[str], field: str = "text") -> str | None:
+    """
+    Only emits TEXT_MATCH() if the 'field' is a VARCHAR with analyzer+match enabled.
+    Otherwise returns None so your hybrid search won’t error out.
+    """
+    try:
+        desc = client.describe_collection(collection_name)
+        # MilvusClient describe schema shape: desc["schema"]["fields"] list of dicts
+        fields = {f["name"]: f for f in desc["schema"]["fields"]}
+        f = fields.get(field)
+        if not f:
+            return None
+        # DataType.VARCHAR shows as "VarChar" or similar depending on client;
+        # enable_analyzer / enable_match flags exist only when text-match is allowed.
+        if (f.get("data_type", "").lower() in ("varchar", "var_char", "string")
+            and f.get("enable_analyzer") is True
+            and f.get("enable_match") is True):
+            clauses = [f'TEXT_MATCH({field}, "{k}")' for k in keywords if k]
+            return " OR ".join(clauses) if clauses else None
+        return None
+    except Exception:
+        # Keep this minimal: if introspection fails, just skip TEXT_MATCH
+        return None
+
+
 # Now include the DocumentProcessor class
 class DocumentProcessor:
     """Process documents into chunks with rich metadata."""
