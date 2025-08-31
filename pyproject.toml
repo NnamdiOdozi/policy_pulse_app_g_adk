@@ -21,8 +21,8 @@ dependencies = [
     "ipywidgets==8.1.7",
     "jupyter==1.1.1",
     "nbformat==5.10.4",
-    "pinecone==6.0.0",      
-    "langchain==0.3.25",             
+    "pinecone==6.0.0",
+    "langchain==0.3.25",
     "streamlit==1.45.1",
     "pyreadline3==3.5.4",
     "authlib==1.6.0",
@@ -36,11 +36,15 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "chardet>=5.0.0",
-    "exa-py>=1.0.7,<2.0.0",           # Exa AI - latest stable 1.0.7, allows minor updates
-    "google-search-results>=2.4.2,<3.0.0",  # SerpAPI - latest 2.4.2, legacy but stable
-    "requests>=2.32.0,<3.0.0",       # HTTP library - latest 2.32.5, widely used
+    "exa-py>=1.0.7,<2.0.0", # Exa AI - latest stable 1.0.7, allows minor updates
+    "google-search-results>=2.4.2,<3.0.0", # SerpAPI - latest 2.4.2, legacy but stable
+    "requests>=2.32.0,<3.0.0", # HTTP library - latest 2.32.5, widely used
     "multidict>=6.1.0,<6.5.0",
     # Debugging/Observability
-    "agentops>=0.4.0,<1.0.0",  # Latest stable 0.4.19, allows minor updates
-
+    "agentops>=0.4.0,<1.0.0", # Latest stable 0.4.19, allows minor updates
+    "voyageai>=0.3.4",
+    "pymilvus>=2.6.1",
+    "pdfplumber>=0.11.7",
+    "langchain-openai>=0.3.32",
+    "tqdm>=4.67.1",
 ]
