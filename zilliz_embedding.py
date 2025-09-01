@@ -19,6 +19,10 @@ import re
 from langchain_openai import ChatOpenAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 # Configuration
 VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "your-voyage-api-key-here")
 ZILLIZ_CLOUD_URI = os.environ.get("ZILLIZ_CLOUD_URI", "https://in03-768dd5416cd6745.serverless.aws-eu-central-1.cloud.zilliz.com")
@@ -27,7 +31,7 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "your-openai-api-key-here")  #
 BATCH_SIZE = 100  # Adjust based on your data and API limits
 COLLECTION_NAME = "docs_voyage_3_large"
 EMBEDDING_DIM = 1024  # Voyage 3 Large dimension
-DOCS_DIRECTORY = "PolicyPulse + AVE collab"  # Change to your actual directory path PolicyPulse + AVE collab
+DOCS_DIRECTORY = "Policy Pulse + AVE collab"  # Change to your actual directory path Policy Pulse + AVE collab
 
 
 import hashlib
@@ -75,12 +79,43 @@ class DocumentProcessor:
             return self._extract_from_pdf(file_path)
         elif file_extension == '.docx':
             return self._extract_from_docx(file_path)
+        elif file_extension == '.pptx':
+            return self._extract_from_pptx(file_path)
+        elif file_extension == '.odp':
+            return self._extract_from_odp(file_path)
         elif file_extension in ['.txt', '.md']:
             return self._extract_from_text(file_path)
         else:
             print(f"Unsupported file type: {file_extension}")
             return ""
-    
+
+    def _extract_from_pptx(self, file_path: Path) -> str:
+        """Extract text from PowerPoint (PPTX) files."""
+        try:
+            from pptx import Presentation
+            prs = Presentation(file_path)
+            text = []
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if hasattr(shape, "text"):
+                        text.append(shape.text)
+            return "\n".join(text)
+        except Exception as e:
+            print(f"Error extracting text from PPTX {file_path}: {e}")
+            return ""
+
+    def _extract_from_odp(self, file_path: Path) -> str:
+        """Extract text from OpenDocument Presentation (ODP) files."""
+        try:
+            from odf import text, teletype
+            from odf.opendocument import load
+            doc = load(file_path)
+            text_elements = doc.getElementsByType(text.P)
+            return "\n".join([teletype.extractText(element) for element in text_elements])
+        except Exception as e:
+            print(f"Error extracting text from ODP {file_path}: {e}")
+            return ""
+
     def _extract_from_pdf(self, file_path: Path) -> str:
         """Extract text from PDF files."""
         text = ""
@@ -285,7 +320,7 @@ class DocumentProcessor:
     
     def process_directory(self, directory_path: str) -> List[Dict[str, Any]]:
         """
-        Process all supported documents in a directory.
+        Process all documents in a directory into chunks.
         
         Args:
             directory_path: Path to directory containing documents
@@ -293,8 +328,8 @@ class DocumentProcessor:
         Returns:
             List of chunk dictionaries with metadata
         """
-        # Supported extensions
-        supported_extensions = ['.pdf', '.docx', '.txt', '.md']
+        # Updated supported extensions
+        supported_extensions = ['.pdf', '.docx', '.pptx', '.odp', '.txt', '.md']
         
         # Get all files
         directory = Path(directory_path)
@@ -395,7 +430,7 @@ class ZillizMigrationTool:
         schema.add_field(
             field_name="id",
             datatype=DataType.VARCHAR,
-            max_length=100,
+            max_length=200,
             is_primary=True,
         )
 
@@ -414,7 +449,7 @@ class ZillizMigrationTool:
         schema.add_field("file_type", datatype=DataType.VARCHAR, max_length=20)
         schema.add_field("file_path", datatype=DataType.VARCHAR, max_length=512)
         schema.add_field("indexed_at", datatype=DataType.VARCHAR, max_length=30)
-        schema.add_field("chunk_id", datatype=DataType.VARCHAR, max_length=100)
+        schema.add_field("chunk_id", datatype=DataType.VARCHAR, max_length=200)
 
         schema.add_field(
             field_name="chunk_summary",
@@ -712,8 +747,8 @@ Source: {chunk.get('filename', '')}"""
                     chunk_data = self._prepare_chunk_data(chunk, batch_embeddings[i])
                     insert_data.append(chunk_data)
                 
-                # Insert the batch
-                self.zilliz_client.insert(
+                # Insert the batch - I changed this to upsert rather than insert so that new chunks with same id would overwrite older chunks
+                self.zilliz_client.upsert(
                     collection_name=collection_name,
                     data=insert_data
                 )
@@ -733,67 +768,92 @@ Source: {chunk.get('filename', '')}"""
         self._save_log_file()
     
     def search_chunks(self, collection_name: str, query: str, limit: int = 5, 
-                     metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+                 metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Search for chunks similar to the query text.
+        Fixed version of search_chunks that handles metadata field issues.
         """
         try:
             # Generate embedding for the query
-            response = self.voyage_client.embed(
+            query_embedding = self.voyage_client.embed(
                 [query], 
                 model="voyage-3-large", 
                 input_type="query",
                 output_dimension=1024
-            )
+            ).embeddings[0]
             
-            # Handle both object and dict response formats
-            if hasattr(response, 'embeddings'):
-                query_embedding = response.embeddings[0]
-            elif isinstance(response, dict) and 'embeddings' in response:
-                query_embedding = response['embeddings'][0]
-            else:
-                raise ValueError(f"Unexpected response format from Voyage AI: {type(response)}")
-            
-            # Define output fields to return
+            # Define output fields - ensure they match your schema
             output_fields = [
-                "text", "chunk_summary", "section_title", 
-                "filename", "semantic_keywords", "keywords_text"
+                "text", "chunk_summary", "section_title", "document_summary",
+                "filename", "file_type", "section_context", "semantic_keywords"
             ]
             
-            # Build search arguments
-            search_args = {
-                "collection_name": collection_name,
+            # Perform the search
+            search_params = {
                 "data": [query_embedding],
-                "anns_field": "vector",
                 "limit": limit,
                 "output_fields": output_fields
             }
             
-            # Add metadata filter if provided
+            # Add metadata filter if provided and properly format it
             if metadata_filter:
-                search_args["filter"] = metadata_filter
+                # Make sure the filter syntax is correct for Zilliz
+                # Example: file_type == "pdf" should work if file_type field exists
+                search_params["filter"] = metadata_filter
+                print(f"Using filter: {metadata_filter}")
             
-            search_results = self.zilliz_client.search(**search_args)
+            search_results = self.zilliz_client.search(
+                collection_name=collection_name,
+                **search_params
+            )
             
             # Format the results
             formatted_results = []
             if search_results and len(search_results) > 0:
                 for hit in search_results[0]:
-                    entity = hit.get("entity", hit)
+                    entity = hit["entity"]
                     formatted_results.append({
                         "text": entity.get("text", ""),
                         "chunk_summary": entity.get("chunk_summary", ""),
                         "section_title": entity.get("section_title", ""),
+                        "document_summary": entity.get("document_summary", ""),
                         "filename": entity.get("filename", ""),
+                        "file_type": entity.get("file_type", ""),
+                        "section_context": entity.get("section_context", ""),
                         "semantic_keywords": entity.get("semantic_keywords", []),
-                        "score": hit.get("score", hit.get("distance", 0))
+                        "score": hit["score"]
                     })
             
             return formatted_results
             
         except Exception as e:
-            print(f"Error searching documents: {e}")
-            return []
+            print(f"Error in search_chunks: {e}")
+            print("Trying basic search without filtering...")
+            
+            # Fallback: try without filtering
+            try:
+                search_results = self.zilliz_client.search(
+                    collection_name=collection_name,
+                    data=[query_embedding],
+                    limit=limit,
+                    output_fields=["text", "chunk_summary", "filename"]
+                )
+                
+                formatted_results = []
+                if search_results and len(search_results) > 0:
+                    for hit in search_results[0]:
+                        entity = hit["entity"]
+                        formatted_results.append({
+                            "text": entity.get("text", ""),
+                            "chunk_summary": entity.get("chunk_summary", ""),
+                            "filename": entity.get("filename", ""),
+                            "score": hit["score"]
+                        })
+                
+                return formatted_results
+            except Exception as fallback_error:
+                print(f"Fallback search also failed: {fallback_error}")
+                return []
+
     
     def hybrid_search_chunks(self, collection_name: str, query: str, limit: int = 5,
                             metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -849,6 +909,39 @@ Source: {chunk.get('filename', '')}"""
             limit=limit
         )
         
+
+    def debug_collection_schema(self, collection_name: str):
+        """Debug the collection schema and sample data"""
+        try:
+            # Check if collection exists
+            if not self.zilliz_client.has_collection(collection_name):
+                print(f"Collection '{collection_name}' does not exist!")
+                return
+            
+            # Get collection info
+            collection_info = self.zilliz_client.describe_collection(collection_name)
+            print("Collection Schema:")
+            for field in collection_info['fields']:
+                print(f"  - {field['name']}: {field['type']}")
+            
+            # Query a few records to see the actual data structure
+            sample_data = self.zilliz_client.query(
+                collection_name=collection_name,
+                filter="",
+                limit=3,
+                output_fields=["filename", "file_type", "chunk_summary"]
+            )
+            
+            print(f"\nSample data ({len(sample_data)} records):")
+            for i, record in enumerate(sample_data):
+                print(f"Record {i+1}:")
+                print(f"  filename: {record.get('filename', 'MISSING')}")
+                print(f"  file_type: {record.get('file_type', 'MISSING')}")
+                print(f"  chunk_summary: {record.get('chunk_summary', 'MISSING')[:50]}...")
+                print()
+                
+        except Exception as e:
+            print(f"Debug error: {e}")
 
 # Example usage
 def main():
@@ -932,6 +1025,51 @@ def main():
     except Exception as e:
         print(f"Error in main process: {e}")
 
+def debug_main():
+    """Debug version of main to identify the search issues"""
+    migration_tool = ZillizMigrationTool(
+        voyage_api_key=VOYAGE_API_KEY,
+        zilliz_uri=ZILLIZ_CLOUD_URI,
+        zilliz_token=ZILLIZ_CLOUD_TOKEN,
+        openai_api_key=OPENAI_API_KEY
+    )
+    
+    # Debug the collection
+    print("=== DEBUGGING COLLECTION ===")
+    migration_tool.debug_collection_schema(COLLECTION_NAME)
+    
+    print("\n=== TESTING BASIC SEARCH ===")
+    results = migration_tool.search_chunks(
+        collection_name=COLLECTION_NAME,
+        query="reproductive health",
+        limit=3
+    )
+    print(f"Basic search returned {len(results)} results")
+    
+    print("\n=== TESTING FILTERED SEARCH ===")
+    # Try different filter formats
+    filter_attempts = [
+        'file_type == ".docx"',
+        'file_type == "docx"',
+        'file_type == ".pdf"',
+        'file_type == "pdf"'
+    ]
+    
+    for filter_expr in filter_attempts:
+        print(f"\nTrying filter: {filter_expr}")
+        try:
+            results = migration_tool.search_chunks(
+                collection_name=COLLECTION_NAME,
+                query="reproductive health",
+                limit=3,
+                metadata_filter=filter_expr
+            )
+            print(f"  SUCCESS: {len(results)} results")
+            if results:
+                print(f"  Sample file_type values: {[r.get('file_type') for r in results[:2]]}")
+        except Exception as e:
+            print(f"  FAILED: {e}")
 
 if __name__ == "__main__":
-    main()
+    #main()
+    debug_main()
