@@ -58,9 +58,11 @@ class DocumentProcessor:
         
         # Initialize LLM for generating summaries
         self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
+            model="gpt-3.5-turbo", #  i tried to use a more advanced model gpt-4o-mini but it was dropping chunks because it's slower than gpt-3.5
             temperature=0.0,
-            api_key=openai_api_key
+            api_key=openai_api_key,
+            request_timeout=120,  # Increase from default 30s to 60s to 120s
+            max_retries=5        # Add automatic retries
         )
     
     def extract_text_from_file(self, file_path: Path) -> str:
@@ -117,16 +119,55 @@ class DocumentProcessor:
             return ""
 
     def _extract_from_pdf(self, file_path: Path) -> str:
-        """Extract text from PDF files."""
-        text = ""
+        """Extract text from PDF files with OCR fallback for scanned PDFs."""
         try:
-            with pdfplumber.open(file_path) as pdf:
-                for page in pdf.pages:
-                    page_text = page.extract_text() or ""
-                    text += page_text + "\n\n"
+            import fitz  # PyMuPDF
+            
+            # Open the PDF
+            doc = fitz.open(file_path)
+            
+            # Check if the PDF has text
+            text = ""
+            text_found = False
+            
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                page_text = page.get_text()
+                
+                # If page has more than 10 characters, consider it a text PDF
+                if len(page_text.strip()) > 10:
+                    text_found = True
+                    text += page_text + "\n"
+            
+            # If no significant text found, it's likely a scanned PDF
+            if not text_found:
+                print(f"PDF appears to be scanned, applying OCR: {file_path}")
+                return self._extract_from_scanned_pdf(file_path)
+            
             return text
+            
         except Exception as e:
             print(f"Error extracting text from PDF {file_path}: {e}")
+            return ""
+
+    def _extract_from_scanned_pdf(self, file_path: Path) -> str:
+        """Extract text from scanned PDFs using OCR."""
+        try:
+            from pdf2image import convert_from_path
+            import pytesseract
+            
+            # Convert PDF to images
+            images = convert_from_path(file_path)
+            
+            # Apply OCR to each image
+            text = []
+            for i, image in enumerate(images):
+                text.append(pytesseract.image_to_string(image))
+            
+            return "\n".join(text)
+            
+        except Exception as e:
+            print(f"Error extracting text from scanned PDF {file_path}: {e}")
             return ""
     
     def _extract_from_docx(self, file_path: Path) -> str:
@@ -177,44 +218,66 @@ class DocumentProcessor:
         
         return "Untitled Section"
     
-    def generate_chunk_summary(self, text: str) -> str:
+    def generate_chunk_summary(self, text: str, max_retries: int = 6) -> str:
         """
-        Generate a summary for a chunk using LLM.
+        Generate a summary for a chunk using LLM with production-grade retry logic.
         
         Args:
             text: The chunk text
+            max_retries: Maximum number of retry attempts
             
         Returns:
             Generated summary in the format "Label - brief summary sentence"
         """
-        try:
-            prompt = f"""
-            Create a concise label that captures the essence of this text chunk, followed by a dash, 
-            and then a summary sentence of no more than 12 words.
-            
-            Format example: "Employment Benefits - Outlines available health insurance and retirement options."
-            
-            Text chunk:
-            {text[:2000]}  # Limit input to avoid token limits
-            
-            Label - Summary:
-            """
-            
-            response = self.llm.invoke(prompt)
-            summary = response.content.strip()
-            
-            # Ensure it has the label - summary format
-            if " - " not in summary:
-                parts = summary.split(" ", 3)
-                if len(parts) >= 3:
-                    summary = f"{parts[0]} {parts[1]} - {' '.join(parts[2:])}"
+        import random
+        
+        for attempt in range(max_retries):
+            try:
+                prompt = f"""
+                Create a concise label that captures the essence of this text chunk, followed by a dash, 
+                and then a summary sentence of no more than 12 words.
+                
+                Format example: "Employment Benefits - Outlines available health insurance and retirement options."
+                
+                Text chunk:
+                {text[:1500]}  # Limit input to avoid token limits
+                
+                Label - Summary:
+                """
+                
+                response = self.llm.invoke(prompt)
+                summary = response.content.strip()
+                
+                # Ensure it has the label - summary format
+                if " - " not in summary:
+                    parts = summary.split(" ", 3)
+                    if len(parts) >= 3:
+                        summary = f"{parts[0]} {parts[1]} - {' '.join(parts[2:])}"
+                    else:
+                        summary = f"Section Summary - {summary}"
+                
+                return summary
+                
+            except Exception as e:
+                if "rate_limit" in str(e).lower() or "429" in str(e):
+                    # Exponential backoff with jitter for rate limits
+                    base_delay = 2 ** attempt
+                    jitter = random.uniform(0.1, 0.3) * base_delay
+                    wait_time = base_delay + jitter
+                    print(f"Rate limited on attempt {attempt + 1}, waiting {wait_time:.1f}s")
+                    time.sleep(wait_time)
+                elif "timeout" in str(e).lower():
+                    # Shorter delay for timeouts
+                    wait_time = 1 + (attempt * 0.5)
+                    print(f"Timeout on attempt {attempt + 1}, waiting {wait_time:.1f}s")
+                    time.sleep(wait_time)
                 else:
-                    summary = f"Section Summary - {summary}"
-            
-            return summary
-        except Exception as e:
-            print(f"Error generating summary: {e}")
-            return "Document Section - Contains policy information."
+                    print(f"LLM error attempt {attempt + 1}: {e}")
+                    time.sleep(1)  # Brief pause for other errors
+                
+                if attempt == max_retries - 1:
+                    raise Exception(f"All {max_retries} LLM attempts failed: {e}")
+
     
     def extract_keywords(self, text: str) -> List[str]:
         """
@@ -290,7 +353,7 @@ class DocumentProcessor:
             }
             basic_chunks.append(chunk)
         
-        # Second pass to add related chunks and cross-chunk context. This relatednedness approach is not semantically based and so not useful
+        # Second pass to add related chunks and cross-chunk context
         for i, chunk in enumerate(basic_chunks):
             # Find related chunks (previous and next, if they exist)
             related_chunks = []
@@ -307,14 +370,20 @@ class DocumentProcessor:
             else:
                 chunk["section_context"] = f"Section: {chunk['section_title']}"
             
-            # Generate chunk summary
-            chunk["chunk_summary"] = self.generate_chunk_summary(chunk["text"])
+            # Generate chunk summary with production retry logic
+            try:
+                chunk["chunk_summary"] = self.generate_chunk_summary(chunk["text"])
+            except Exception as e:
+                print(f"FAILED to generate summary for chunk {i} after all retries: {e}")
+                # Since you don't want chunks without summaries, skip this chunk
+                continue
             
-            # Cross-references (simplified - in a real system you'd have a more sophisticated approach)
-            # Here we're just adding dummy cross-references for demonstration
             chunk["cross_references"] = []
-            
             processed_chunks.append(chunk)
+            
+            # Rate limiting between chunks (production practice)
+            if i < len(basic_chunks) - 1:
+                time.sleep(0.2)  # 200ms between chunks
         
         return processed_chunks
     
@@ -820,7 +889,7 @@ Source: {chunk.get('filename', '')}"""
                         "file_type": entity.get("file_type", ""),
                         "section_context": entity.get("section_context", ""),
                         "semantic_keywords": entity.get("semantic_keywords", []),
-                        "score": hit["score"]
+                        "score": 1.0 -  hit.get("distance", 0.0)
                     })
             
             return formatted_results
@@ -846,7 +915,7 @@ Source: {chunk.get('filename', '')}"""
                             "text": entity.get("text", ""),
                             "chunk_summary": entity.get("chunk_summary", ""),
                             "filename": entity.get("filename", ""),
-                            "score": hit["score"]
+                            "score": 1.0 - hit.get("distance", 0.0)
                         })
                 
                 return formatted_results
@@ -1071,5 +1140,5 @@ def debug_main():
             print(f"  FAILED: {e}")
 
 if __name__ == "__main__":
-    #main()
-    debug_main()
+    main()
+    #debug_main()
