@@ -16,7 +16,7 @@ import os
 
 from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
-from ..tools import search_with_tavily_report, search_with_exa, _retrieve_context
+from ..tools import search_with_tavily_report, search_with_exa, _retrieve_context_zilliz
 
 import logging
 
@@ -147,5 +147,5 @@ ReportWriting_OpenAI_agent = Agent(
         "Agent which long-form and research type writing in order to draft reports, policies etc."
     ),
     instruction=INSTRUCTION,
-    tools=[_retrieve_context, search_with_tavily_report]
+    tools=[_retrieve_context_zilliz, search_with_tavily_report]
 )

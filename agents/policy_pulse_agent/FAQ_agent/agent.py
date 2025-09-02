@@ -18,7 +18,7 @@ from google.adk.models.lite_llm import LiteLlm
 from google.adk.agents import Agent
 from google.adk.tools import  google_search
 from google.genai import types
-from ..tools import  search_with_tavily_faq, search_with_exa, _retrieve_context
+from ..tools import  search_with_tavily_faq, search_with_exa, _retrieve_context_zilliz
 
 # Configure detailed logging
 logging.basicConfig(level=logging.DEBUG)
@@ -85,5 +85,5 @@ FAQ_agent = Agent(
     generate_content_config=types.GenerateContentConfig(
         temperature=0.3,  # Adjust as needed (0.0-1.0)
     ),
-    tools=[ _retrieve_context, search_with_tavily_faq]
+    tools=[ _retrieve_context_zilliz, search_with_tavily_faq]
 )

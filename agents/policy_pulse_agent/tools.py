@@ -27,6 +27,22 @@ from zilliz_embedding import ZillizMigrationTool
 from dotenv import load_dotenv
 load_dotenv()
 
+from functools import lru_cache
+
+@lru_cache(maxsize=1)
+def _get_cached_zilliz_client():
+    """Create and cache a single ZillizMigrationTool instance."""
+    return ZillizMigrationTool(
+        voyage_api_key=os.getenv("VOYAGE_API_KEY"),
+        zilliz_uri=os.getenv("ZILLIZ_CLOUD_URI"),
+        zilliz_token=os.getenv("ZILLIZ_API_KEY"),
+        openai_api_key=os.getenv("OPENAI_API_KEY")
+    )
+
+def get_zilliz_client():
+    """Get the cached ZillizMigrationTool instance."""
+    return _get_cached_zilliz_client()
+
 # Create a cache that expires entries after 30 minutes. This is used by the RAG retrieval tool
 search_cache = TTLCache(maxsize=50, ttl=1800)  # 50 queries, 30min expiry
 
@@ -539,13 +555,7 @@ def _retrieve_context_zilliz(query: str,
     
     try:
         # Create fresh ZillizMigrationTool instance
-        migrator = ZillizMigrationTool(
-            voyage_api_key=os.getenv("VOYAGE_API_KEY"),
-            zilliz_uri=os.getenv("ZILLIZ_CLOUD_URI"),
-            zilliz_token=os.getenv("ZILLIZ_API_KEY"),
-            openai_api_key=os.getenv("OPENAI_API_KEY")
-        )
-        
+        migrator = get_zilliz_client()      
         # Try hybrid search first (TEXT_MATCH + semantic ranking)
         # This searches across text, chunk_summary, section_title, and semantic_keywords fields
         hybrid_results = migrator.hybrid_search_chunks(
@@ -724,8 +734,14 @@ __all__ = [
     'search_all_providers'
 ]
 
-temp = _retrieve_context_zilliz(query= "what are a company's obligations to its workers in respect of menopause", 
-                     max_chunks= 5, 
-                     collection_name=os.getenv("ZILLIZ_COLLECTION_NAME"))
+# temp = _retrieve_context_zilliz(query= "what are a company's obligations to its workers in respect of menopause", 
+#                      max_chunks= 5, 
+#                      collection_name=os.getenv("ZILLIZ_COLLECTION_NAME"))
 
-print(temp)
+# print(temp)
+
+# temp = _retrieve_context_zilliz(query= "what are a company's obligations to its workers in respect of menopause", 
+#                      max_chunks= 5, 
+#                      collection_name=os.getenv("ZILLIZ_COLLECTION_NAME"))
+
+# print("\n\n", temp)
