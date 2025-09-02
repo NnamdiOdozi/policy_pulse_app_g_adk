@@ -7,8 +7,7 @@ import sys
 import requests
 import json
 import time
-from typing import Optional, Dict, Any
-
+from typing import Any, Dict, List, Optional
 from google.adk.agents import Agent
 from google.adk.tools.agent_tool import AgentTool
 from google.adk.tools import  google_search
@@ -19,6 +18,22 @@ project_root = os.path.join(current_dir, '..' , '..')
 sys.path.insert(0, os.path.abspath(project_root))
 
 from old_pulse.ai_agent import retrieve_relevant_chunks
+
+from cachetools import TTLCache
+import hashlib
+from zilliz_embedding import ZillizMigrationTool
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+# Create a cache that expires entries after 30 minutes. This is used by the RAG retrieval tool
+search_cache = TTLCache(maxsize=50, ttl=1800)  # 50 queries, 30min expiry
+
+def _cache_key(query: str, collection: str) -> str:
+    """Generate cache key for search results."""
+    combined = f"{query}:{collection}"
+    return hashlib.md5(combined.encode()).hexdigest()[:16]
 
 
 # ========== CORRECT ADK FUNCTION TOOLS ==========
@@ -392,7 +407,7 @@ def _retrieve_context(query: str, max_chunks: int = 5) -> Dict[str, Any]:
     """
     Retrieve relevant context from the Policy Pulse knowledge base using RAG.
 
-    Note that the RAG daatbase may not have the most up to dat information
+    Note that the RAG database may not have the most up to dat information
     
     This function searches the internal vector database for relevant policy 
     documents, regulatory guidance, and training content to provide context 
@@ -463,6 +478,150 @@ def _retrieve_context(query: str, max_chunks: int = 5) -> Dict[str, Any]:
     except Exception as e:
         return {"error": f"Context retrieval failed: {str(e)}"}
 
+
+# Initialize cache at module level
+search_cache = TTLCache(maxsize=50, ttl=1800)  # 50 queries, 30min expiry
+
+def _cache_key(query: str, collection: str) -> str:
+    """Generate cache key for search results."""
+    combined = f"{query}:{collection}"
+    return hashlib.md5(combined.encode()).hexdigest()[:16]
+
+def _retrieve_context_zilliz(query: str, 
+                     max_chunks: int = 5, 
+                     collection_name: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Retrieve relevant document chunks using hybrid search with semantic fallback.
+    
+    Uses a two-step approach:
+    1. HYBRID SEARCH (default): Combines TEXT_MATCH keyword filtering with semantic ranking
+       - Extracts keywords from query (e.g., "UK", "compliance", "miscarriage")
+       - Filters chunks containing these keywords in text, summaries, titles, or semantic_keywords
+       - Ranks filtered results by semantic similarity
+    2. SEMANTIC FALLBACK: If hybrid returns no results, uses pure vector similarity search
+    
+    Args:
+        query: Search query text (e.g., "What are UK compliance requirements for employers regarding miscarriage")
+        max_chunks: Maximum number of chunks to return (default: 5)
+        collection_name: Optional collection name override
+    
+    Returns:
+        Dictionary containing:
+        - provider: "Zilliz RAG"
+        - query: Original search query
+        - chunks: List of relevant document chunks with rich metadata
+        - total_chunks: Number of chunks returned
+        - method: Search method used ("hybrid" or "semantic_fallback")
+        - cached: Whether result was from cache
+        
+    Each chunk contains:
+        - position: Result ranking (1, 2, 3...)
+        - content: Chunk summary (LLM-generated, more relevant than raw text)
+        - full_text: Raw chunk text truncated to 500 chars (for detailed analysis)
+        - source: Filename
+        - score: Similarity score (higher = more similar, 0.0-1.0 range)
+        - section_title: Document section this chunk belongs to
+        - section_context: Additional section context information
+        - document_summary: Overall document summary
+        - file_type: Document type (pdf, docx, pptx, etc.)
+        - semantic_keywords: Top 5 most frequent keywords from this chunk
+    """
+    
+    # Set default collection name
+    collection = collection_name or os.getenv("ZILLIZ_COLLECTION_NAME", "docs_voyage_3_large")
+    
+    # Check cache first
+    cache_key = _cache_key(query, collection)
+    if cache_key in search_cache:
+        cached_result = search_cache[cache_key]
+        cached_result["cached"] = True
+        return cached_result
+    
+    try:
+        # Create fresh ZillizMigrationTool instance
+        migrator = ZillizMigrationTool(
+            voyage_api_key=os.getenv("VOYAGE_API_KEY"),
+            zilliz_uri=os.getenv("ZILLIZ_CLOUD_URI"),
+            zilliz_token=os.getenv("ZILLIZ_API_KEY"),
+            openai_api_key=os.getenv("OPENAI_API_KEY")
+        )
+        
+        # Try hybrid search first (TEXT_MATCH + semantic ranking)
+        # This searches across text, chunk_summary, section_title, and semantic_keywords fields
+        hybrid_results = migrator.hybrid_search_chunks(
+            collection_name=collection,
+            query=query,
+            limit=max_chunks,
+            metadata_filter=None  # No file_type filtering - focus on content relevance
+        )
+        
+        # Fallback to pure semantic search if hybrid returns no results
+        if not hybrid_results:
+            semantic_results = migrator.search_chunks(
+                collection_name=collection,
+                query=query,
+                limit=max_chunks,
+                metadata_filter=None
+            )
+            results = semantic_results
+            method_used = "semantic_fallback"
+        else:
+            results = hybrid_results
+            method_used = "hybrid"
+        
+        # Format results with rich metadata
+        chunks = []
+        for i, result in enumerate(results, 1):
+            chunk = {
+                "position": i,
+                "content": result.get("chunk_summary", "").strip(),
+                "full_text": result.get("text", "")[:2000] + "..." if len(result.get("text", "")) > 2000 else result.get("text", ""),
+                "source": result.get("filename", ""),
+                "score": result.get("score", 0.0),
+                "section_title": result.get("section_title", ""),
+                "section_context": result.get("section_context", ""),
+                "document_summary": result.get("document_summary", ""),
+                "file_type": result.get("file_type", ""),
+                "semantic_keywords": result.get("semantic_keywords", [])[:5]  # Top 5 keywords only
+            }
+            chunks.append(chunk)
+        
+        # Build response
+        response = {
+            "provider": "Zilliz RAG", 
+            "query": query,
+            "chunks": chunks,
+            "total_chunks": len(chunks),
+            "method": method_used,
+            "cached": False
+        }
+        
+        # Cache the result
+        search_cache[cache_key] = response.copy()  # Store copy to avoid mutation
+        
+        return response
+        
+    except Exception as e:
+        # Return error response (consistent with web search tools)
+        return {
+            "provider": "Zilliz RAG",
+            "query": query, 
+            "chunks": [],
+            "total_chunks": 0,
+            "method": "error",
+            "cached": False,
+            "error": f"Retrieval failed: {str(e)}"
+        }
+
+# Optional: Cache statistics function for debugging
+def get_cache_stats() -> Dict[str, Any]:
+    """Get cache statistics for debugging."""
+    return {
+        "cache_size": len(search_cache),
+        "max_size": search_cache.maxsize,
+        "ttl_seconds": search_cache.ttl,
+        "cache_info": f"hits/misses tracking not available with TTLCache"
+    }
 
 # ========== UTILITY FUNCTIONS ==========
 
@@ -564,3 +723,9 @@ __all__ = [
     'get_search_tool',
     'search_all_providers'
 ]
+
+temp = _retrieve_context_zilliz(query= "what are a company's obligations to its workers in respect of menopause", 
+                     max_chunks= 5, 
+                     collection_name=os.getenv("ZILLIZ_COLLECTION_NAME"))
+
+print(temp)

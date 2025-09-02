@@ -240,7 +240,7 @@ class DocumentProcessor:
                 Format example: "Employment Benefits - Outlines available health insurance and retirement options."
                 
                 Text chunk:
-                {text[:1500]}  # Limit input to avoid token limits
+                {text[:2000]}  # Limit input to avoid token limits
                 
                 Label - Summary:
                 """
@@ -255,10 +255,11 @@ class DocumentProcessor:
                         summary = f"{parts[0]} {parts[1]} - {' '.join(parts[2:])}"
                     else:
                         summary = f"Section Summary - {summary}"
-                
+                print(f"LLM attempt {attempt + 1} succeeded") # this is a debug statement
                 return summary
                 
             except Exception as e:
+                print(f"LLM attempt {attempt + 1} failed: {e}")
                 if "rate_limit" in str(e).lower() or "429" in str(e):
                     # Exponential backoff with jitter for rate limits
                     base_delay = 2 ** attempt
@@ -276,9 +277,11 @@ class DocumentProcessor:
                     time.sleep(1)  # Brief pause for other errors
                 
                 if attempt == max_retries - 1:
+                    print(f"All {max_retries} attempts failed, raising exception")
                     raise Exception(f"All {max_retries} LLM attempts failed: {e}")
 
-    
+        print("ERROR: Reached end of generate_chunk_summary without return or exception")
+
     def extract_keywords(self, text: str) -> List[str]:
         """
         Extract semantic keywords from the chunk text.
@@ -416,6 +419,43 @@ class DocumentProcessor:
         
         print(f"Total document chunks created: {len(all_chunks)}")
         return all_chunks
+    
+    def test_raw_chunk_count(self, directory_path: str) -> int:
+        """
+        Test method to count raw chunks without any LLM processing.
+        
+        Args:
+            directory_path: Path to directory containing documents
+            
+        Returns:
+            Total number of raw chunks created
+        """
+        supported_extensions = ['.pdf', '.docx', '.pptx', '.odp', '.txt', '.md']
+        
+        directory = Path(directory_path)
+        all_files = [p for p in directory.glob('**/*') if p.is_file() and p.suffix.lower() in supported_extensions]
+        
+        total_raw_chunks = 0
+        
+        print(f"=== RAW CHUNK COUNT TEST ===")
+        print(f"Found {len(all_files)} files to process")
+        
+        for file_path in all_files:
+            # Extract text
+            text = self.extract_text_from_file(file_path)
+            if not text:
+                print(f"No text extracted from {file_path.name}")
+                continue
+                
+            # Split into chunks (no processing)
+            raw_chunks = self.text_splitter.split_text(text)
+            chunk_count = len(raw_chunks)
+            total_raw_chunks += chunk_count
+            
+            print(f"{file_path.name}: {chunk_count} chunks")
+        
+        print(f"=== TOTAL RAW CHUNKS: {total_raw_chunks} ===")
+        return total_raw_chunks
 
 
 import os
@@ -860,7 +900,9 @@ Source: {chunk.get('filename', '')}"""
             search_params = {
                 "data": [query_embedding],
                 "limit": limit,
-                "output_fields": output_fields
+                "output_fields": output_fields,
+                "anns_field": "vector",  # add: explicit vector field
+                "search_params": {"metric_type": "COSINE", "params": {"ef": 256}},  # add: HNSW recall
             }
             
             # Add metadata filter if provided and properly format it
@@ -904,7 +946,9 @@ Source: {chunk.get('filename', '')}"""
                     collection_name=collection_name,
                     data=[query_embedding],
                     limit=limit,
-                    output_fields=["text", "chunk_summary", "filename"]
+                    output_fields=["text", "chunk_summary", "filename"],
+                    anns_field= "vector",  # add: explicit vector field
+                    search_params= {"metric_type": "COSINE", "params": {"ef": 256}},  # add: HNSW recall
                 )
                 
                 formatted_results = []
@@ -990,8 +1034,10 @@ Source: {chunk.get('filename', '')}"""
             # Get collection info
             collection_info = self.zilliz_client.describe_collection(collection_name)
             print("Collection Schema:")
-            for field in collection_info['fields']:
-                print(f"  - {field['name']}: {field['type']}")
+            fields = collection_info.get("schema", {}).get("fields", [])
+            for f in fields:
+                print(f"  - {f.get('name')}: {f.get('data_type')}, "
+                    f"analyzer={f.get('enable_analyzer')}, match={f.get('enable_match')}")
             
             # Query a few records to see the actual data structure
             sample_data = self.zilliz_client.query(
@@ -1022,6 +1068,9 @@ def main():
         openai_api_key=OPENAI_API_KEY
     )
     
+    # Test raw chunk count first
+    raw_count = migration_tool.document_processor.test_raw_chunk_count(DOCS_DIRECTORY)
+
     # Process all documents in the directory and insert into Zilliz
     try:
         chunks = migration_tool.process_directory_and_insert(
@@ -1029,6 +1078,12 @@ def main():
             directory_path=DOCS_DIRECTORY
         )
         print(f"Successfully processed and inserted {len(chunks)} chunks")
+
+        print(f"\n=== COMPARISON ===")
+        print(f"Raw chunks (no LLM): {raw_count}")
+        print(f"Processed chunks: {len(chunks)}")
+        print(f"Chunks lost: {raw_count - len(chunks)}")
+
         
         # Example searches using the new collection
         if chunks:
@@ -1036,7 +1091,7 @@ def main():
             results = migration_tool.search_chunks(
                 collection_name=COLLECTION_NAME,
                 query="What are the maternity leave entitlements?",
-                limit=3
+                limit=5
             )
             for i, result in enumerate(results):
                 print(f"Result {i+1}: {result['chunk_summary']}")
@@ -1049,7 +1104,7 @@ def main():
             results = migration_tool.search_chunks(
                 collection_name=COLLECTION_NAME,
                 query="maternity policy requirements",
-                limit=3,
+                limit=5,
                 metadata_filter="file_type == \"pdf\""
             )
             for i, result in enumerate(results):
@@ -1063,7 +1118,7 @@ def main():
             results = migration_tool.hybrid_search_chunks(
                 collection_name=COLLECTION_NAME,
                 query="maternity leave duration weeks",
-                limit=3
+                limit=5
             )
             for i, result in enumerate(results):
                 print(f"Result {i+1}: {result['chunk_summary']}")
@@ -1111,7 +1166,7 @@ def debug_main():
     results = migration_tool.search_chunks(
         collection_name=COLLECTION_NAME,
         query="reproductive health",
-        limit=3
+        limit=5
     )
     print(f"Basic search returned {len(results)} results")
     
@@ -1130,7 +1185,7 @@ def debug_main():
             results = migration_tool.search_chunks(
                 collection_name=COLLECTION_NAME,
                 query="reproductive health",
-                limit=3,
+                limit=5,
                 metadata_filter=filter_expr
             )
             print(f"  SUCCESS: {len(results)} results")

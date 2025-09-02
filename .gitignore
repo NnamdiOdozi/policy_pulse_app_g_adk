@@ -188,3 +188,8 @@ cython_debug/
 .cursorindexingignore
 
 .DS_Store
+
+
+# logs
+embedding_logs/
+embedding_logs

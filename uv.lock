@@ -3684,6 +3684,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "agentops" },
     { name = "authlib" },
+    { name = "cachetools" },
     { name = "chardet" },
     { name = "exa-py" },
     { name = "fastapi" },
@@ -3725,6 +3726,7 @@ dependencies = [
 requires-dist = [
     { name = "agentops", specifier = ">=0.4.0,<1.0.0" },
     { name = "authlib", specifier = "==1.6.0" },
+    { name = "cachetools", specifier = ">=5.5.2" },
     { name = "chardet", specifier = ">=5.0.0" },
     { name = "exa-py", specifier = ">=1.0.7,<2.0.0" },
     { name = "fastapi" },
