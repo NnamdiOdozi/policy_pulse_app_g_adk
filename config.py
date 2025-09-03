@@ -1,5 +1,5 @@
-# This file is yet to be tested or used. The idea is a central config file that we can use to set config parameters for different parts of the systme and different stages of the 
-# project eg development, testing and production. The paramaters set here are yet to be imported into the different project scripts
+# This file is yet to be tested or used and is haphazard at the moment. Do not make any reliances or assumptions about it!!! For example there are some endpoints that are only listed in the base config and not in other configs. The idea is a central config file that we can use to set config parameters for different parts of the systme and different stages of the 
+# project eg development, testing and production. The paramaters set here are yet to be imported into the different project .
 
 import os
 from typing import Optional, Dict, Any
@@ -73,7 +73,11 @@ class BaseConfig:
     
     # Google Services
     GOOGLE_GENAI_USE_VERTEXAI = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "FALSE")
-    
+
+    # Embedding and Vector DB Indexing
+    ZILLIZ_CLOUD_URI="https://in03-768dd5416cd6745.serverless.aws-eu-central-1.cloud.zilliz.com"
+    ZILLIZ_COLLECTION_NAME = "docs_voyage_3_large"
+
     # Validation
     @classmethod
     def validate_required_keys(cls) -> list:

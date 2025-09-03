@@ -487,6 +487,7 @@ class ZillizMigrationTool:
             uri=zilliz_uri,
             token=zilliz_token
         )
+        
         self.document_processor = None
         if openai_api_key:
             from zilliz_embedding import DocumentProcessor  # Adjust import as needed
