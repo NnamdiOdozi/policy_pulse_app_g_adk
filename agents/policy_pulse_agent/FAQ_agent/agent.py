@@ -83,7 +83,7 @@ FAQ_agent = Agent(
     ),
     instruction=INSTRUCTION,
     generate_content_config=types.GenerateContentConfig(
-        temperature=0.3,  # Adjust as needed (0.0-1.0)
+        temperature=0.1,  # Adjust as needed (0.0-1.0)
     ),
-    tools=[ _retrieve_context_zilliz, search_with_tavily_faq]
+    tools=[ _retrieve_context_zilliz, search_with_exa]
 )

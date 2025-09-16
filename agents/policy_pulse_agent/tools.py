@@ -311,8 +311,9 @@ def search_with_exa(query: str, max_results: int = 5) -> Dict[str, Any]:
         exa_results = exa.search_and_contents(
             query=query,
             num_results=min(max_results, 10),
-            type="auto",
-            text={"max_characters": 1000}  # REVERTED back to 1000
+            type="fast",
+            livecrawl="never",
+            text={"max_characters": 500}  # REVERTED back to 500
         )
         
         results = []
