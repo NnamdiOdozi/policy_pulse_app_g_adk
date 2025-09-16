@@ -310,7 +310,7 @@ def search_with_exa(query: str, max_results: int = 5) -> Dict[str, Any]:
         # Use search_and_contents - REVERTED to original settings
         exa_results = exa.search_and_contents(
             query=query,
-            num_results=min(max_results, 10),
+            num_results=min(max_results, 5),
             type="fast",
             livecrawl="never",
             text={"max_characters": 500}  # REVERTED back to 500
@@ -443,7 +443,7 @@ def _retrieve_context(query: str, max_chunks: int = 5) -> Dict[str, Any]:
             text=query,
             index_name="policypulse",
             api_key=os.environ.get("PINECONE_API_KEY"),
-            top_k=max_chunks,
+            top_k=min(max_chunks, 5),
         )
         
         if not chunks:

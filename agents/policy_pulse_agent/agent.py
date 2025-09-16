@@ -275,6 +275,7 @@ root_agent = Agent(
     tools = [FAQ_tool, ReportWriting_tool],
     generate_content_config=types.GenerateContentConfig(
         temperature=0.2,  # Adjust as needed (0.0-1.0)
+        
     ),
         
     #sub_agents = []

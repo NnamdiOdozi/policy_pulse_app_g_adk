@@ -51,14 +51,14 @@ class DocumentProcessor:
             openai_api_key: API key for OpenAI (used for generating summaries)
         """
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=2000,
-            chunk_overlap=400,
+            chunk_size=1000,
+            chunk_overlap=200,
             length_function=len,
         )
         
         # Initialize LLM for generating summaries
         self.llm = ChatOpenAI(
-            model="gpt-3.5-turbo", #  i tried to use a more advanced model gpt-4o-mini but it was dropping chunks because it's slower than gpt-3.5
+            model="gpt-4o-mini", #  i switched this up from gpt-3.5 to improve quality
             temperature=0.0,
             api_key=openai_api_key,
             request_timeout=120,  # Increase from default 30s to 60s to 120s
