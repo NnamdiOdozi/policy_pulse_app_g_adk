@@ -55,7 +55,7 @@ def _cache_key(query: str, collection: str) -> str:
 # ========== CORRECT ADK FUNCTION TOOLS ==========
 # Following ADK documentation: functions should be standalone, serializable
 
-def search_with_tavily_faq(query: str, max_results: int = 8, char_limit: int = 1000, search_depth: str = "basic", include_raw: bool = False) -> Dict[str, Any]:
+def search_with_tavily_faq(query: str, max_results: int = 5, char_limit: int = 1000, search_depth: str = "basic", include_raw: bool = False) -> Dict[str, Any]:
 
     """
         Search the web using Tavily AI-powered search engine with prioritized domains.
@@ -68,7 +68,7 @@ def search_with_tavily_faq(query: str, max_results: int = 8, char_limit: int = 1
         
         Args:
             query (str): The search query which should be in double quotes. Be specific and detailed for best results.
-            max_results (int): Maximum number of results to return (default: 8, max: 20)
+            max_results (int): Maximum number of results to return (default: 5, max: 20)
             char_limit (int): Maximum characters per result content (default: 1000)
             search_depth (str): Search depth "basic" or "advanced" (default: "basic")
             include_raw (bool): Whether to include raw content (default: False)
@@ -101,15 +101,15 @@ def search_with_tavily_faq(query: str, max_results: int = 8, char_limit: int = 1
     result = _search_with_tavily(
         query=query,
         max_results=max_results,
-        char_limit=10000,  # 5,000 chars instead of 500
+        char_limit=500,  
         search_depth="advanced",
-        include_raw=True,  # Include raw content for more detail
+        include_raw=False,  
         preferred_domains=preferred_domains
     )   
 
     return result
 
-def _search_with_tavily(query: str, max_results: int = 8, char_limit: int = 1000, search_depth: str = "basic", include_raw: bool = False, preferred_domains:list[str]=None) -> Dict[str, Any]:
+def _search_with_tavily(query: str, max_results: int = 5, char_limit: int = 1000, search_depth: str = "basic", include_raw: bool = False, preferred_domains:list[str]=None) -> Dict[str, Any]:
     """
     Search the web using Tavily AI-powered search engine with prioritized domains.
     
@@ -121,7 +121,7 @@ def _search_with_tavily(query: str, max_results: int = 8, char_limit: int = 1000
     
     Args:
         query (str): The search query which should be in double quotes. Be specific and detailed for best results.
-        max_results (int): Maximum number of results to return (default: 8, max: 20)
+        max_results (int): Maximum number of results to return (default: 5, max: 20)
         char_limit (int): Maximum characters per result content (default: 1000)
         search_depth (str): Search depth "basic" or "advanced" (default: "basic")
         include_raw (bool): Whether to include raw content (default: False)
@@ -144,7 +144,7 @@ def _search_with_tavily(query: str, max_results: int = 8, char_limit: int = 1000
             query, 
             search_depth, 
             include_raw, 
-            max_results * 2,  # Request more results to ensure we get enough
+            max_results,  
             preferred_domains
         )
         
@@ -505,7 +505,7 @@ def _cache_key(query: str, collection: str) -> str:
     return hashlib.md5(combined.encode()).hexdigest()[:16]
 
 def _retrieve_context_zilliz(query: str, 
-                     max_chunks: int = 5, 
+                     max_chunks: int = 3, 
                      collection_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Retrieve relevant document chunks using hybrid search with semantic fallback.
@@ -562,7 +562,7 @@ def _retrieve_context_zilliz(query: str,
         hybrid_results = migrator.hybrid_search_chunks(
             collection_name=collection,
             query=query,
-            limit=max_chunks,
+            limit=min(max_chunks, 3),
             metadata_filter=None  # No file_type filtering - focus on content relevance
         )
         
@@ -571,7 +571,7 @@ def _retrieve_context_zilliz(query: str,
             semantic_results = migrator.search_chunks(
                 collection_name=collection,
                 query=query,
-                limit=max_chunks,
+                limit=min(max_chunks, 3),
                 metadata_filter=None
             )
             results = semantic_results
@@ -734,15 +734,3 @@ __all__ = [
     'get_search_tool',
     'search_all_providers'
 ]
-
-# temp = _retrieve_context_zilliz(query= "what are a company's obligations to its workers in respect of menopause", 
-#                      max_chunks= 5, 
-#                      collection_name=os.getenv("ZILLIZ_COLLECTION_NAME"))
-
-# print(temp)
-
-# temp = _retrieve_context_zilliz(query= "what are a company's obligations to its workers in respect of menopause", 
-#                      max_chunks= 5, 
-#                      collection_name=os.getenv("ZILLIZ_COLLECTION_NAME"))
-
-# print("\n\n", temp)

@@ -8,7 +8,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "google-adk>=1.10.0",
     "google-genai>=1.16.1",
     "litellm>=1.72.9",
     "pg8000==1.31.2",
@@ -48,4 +47,5 @@ dependencies = [
     "langchain-openai>=0.3.32",
     "tqdm>=4.67.1",
     "cachetools>=5.5.2",
+    "google-adk>=1.14.1",
 ]
