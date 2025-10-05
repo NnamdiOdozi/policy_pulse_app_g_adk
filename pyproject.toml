@@ -8,8 +8,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "google-genai>=1.16.1",
-    "litellm>=1.72.9",
     "pg8000==1.31.2",
     "psycopg2-binary==2.9.10",
     "pip==25.1.1",
@@ -47,5 +45,9 @@ dependencies = [
     "langchain-openai>=0.3.32",
     "tqdm>=4.67.1",
     "cachetools>=5.5.2",
-    "google-adk>=1.14.1",
+    "google-adk==1.15",
+    "googlemaps>=4.10.0",
+    "google-maps-addressvalidation>=0.3.20",
+    "modelcontextprotocol>=0.1.0",
+    "watchdog>=6.0.0",
 ]

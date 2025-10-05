@@ -22,6 +22,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 # Load environment variables
 from dotenv import load_dotenv
 load_dotenv()
+import hashlib  # For SHA-256 hash calculation
 
 # Configuration
 VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "your-voyage-api-key-here")
@@ -29,7 +30,7 @@ ZILLIZ_CLOUD_URI = os.environ.get("ZILLIZ_CLOUD_URI", "https://in03-768dd5416cd6
 ZILLIZ_CLOUD_TOKEN = os.environ.get("ZILLIZ_API_KEY", "your-zilliz-token-here")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "your-openai-api-key-here")  # For generating summaries
 BATCH_SIZE = 100  # Adjust based on your data and API limits
-COLLECTION_NAME = "docs_voyage_3_large"
+COLLECTION_NAME = "WAE_docs_voyage_3_large"
 EMBEDDING_DIM = 1024  # Voyage 3 Large dimension
 DOCS_DIRECTORY = "Policy Pulse + AVE collab"  # Change to your actual directory path Policy Pulse + AVE collab
 
@@ -91,6 +92,30 @@ class DocumentProcessor:
             print(f"Unsupported file type: {file_extension}")
             return ""
 
+
+    def calculate_file_hash(self, file_path: Path) -> str:
+        """
+        Calculate SHA-256 hash of file content.
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            Hex string of SHA-256 hash (64 characters)
+        """
+        sha256_hash = hashlib.sha256()
+        
+        try:
+            with open(file_path, "rb") as f:
+                # Read file in chunks to handle large files efficiently
+                for byte_block in iter(lambda: f.read(65536), b""):
+                    sha256_hash.update(byte_block)
+            
+            return sha256_hash.hexdigest()
+        except Exception as e:
+            print(f"Error calculating hash for {file_path}: {e}")
+            return ""
+        
     def _extract_from_pptx(self, file_path: Path) -> str:
         """Extract text from PowerPoint (PPTX) files."""
         try:
@@ -316,6 +341,10 @@ class DocumentProcessor:
         Returns:
             List of chunk dictionaries with metadata
         """
+        # Calculate file hash (for change detection)
+        file_hash = self.calculate_file_hash(file_path)
+        file_size = file_path.stat().st_size
+
         # Extract text from file
         text = self.extract_text_from_file(file_path)
         if not text:
@@ -349,6 +378,8 @@ class DocumentProcessor:
                 "filename": file_path.name,
                 "file_type": file_path.suffix.lstrip('.'),
                 "file_path": str(file_path),
+                "file_hash": file_hash,  
+                "file_size": file_size, 
                 "indexed_at": datetime.datetime.now().isoformat(),
                 "section_title": section_title,
                 "document_summary": document_summary,
@@ -511,7 +542,7 @@ class ZillizMigrationTool:
         
         print("Clients initialized successfully")
 
-    def create_collection(self, collection_name: str, dimension: int = 1024, drop_if_exists: bool = False):
+    def create_collection(self, collection_name: str, dimension: int = EMBEDDING_DIM, drop_if_exists: bool = False):
         """
         Create the collection with TEXT_MATCH support, or reuse an existing one.
         - Will NOT drop if the collection exists unless drop_if_exists=True
@@ -558,6 +589,8 @@ class ZillizMigrationTool:
         schema.add_field("filename", datatype=DataType.VARCHAR, max_length=256)
         schema.add_field("file_type", datatype=DataType.VARCHAR, max_length=20)
         schema.add_field("file_path", datatype=DataType.VARCHAR, max_length=512)
+        schema.add_field("file_hash", datatype=DataType.VARCHAR, max_length=64)  
+        schema.add_field("file_size", datatype=DataType.INT64)  #  - File size in bytes
         schema.add_field("indexed_at", datatype=DataType.VARCHAR, max_length=30)
         schema.add_field("chunk_id", datatype=DataType.VARCHAR, max_length=200)
 
@@ -801,6 +834,8 @@ Source: {chunk.get('filename', '')}"""
             "filename": chunk["filename"],
             "file_type": chunk.get("file_type", ""),
             "file_path": chunk.get("file_path", ""),
+            "file_hash": chunk.get("file_hash", ""),   
+            "file_size": chunk.get("file_size", 0),   
             "indexed_at": chunk.get("indexed_at", ""),
             "chunk_id": chunk.get("chunk_id", ""),
             "section_title": chunk.get("section_title", ""),
@@ -876,7 +911,117 @@ Source: {chunk.get('filename', '')}"""
         
         # Save the complete log file
         self._save_log_file()
+
+    def get_file_hash(self, collection_name: str, file_path: str) -> Optional[str]:
+        """
+        Get the stored hash for a file by querying any of its chunks.
+        
+        Args:
+            collection_name: Collection to query
+            file_path: Full path to the file
+            
+        Returns:
+            SHA-256 hash string or None if file not found
+        """
+        try:
+        # Escape backslashes for Windows paths in filter expression
+            escaped_path = file_path.replace("\\", "\\\\")
+            
+            # Query for any chunk from this file
+            results = self.zilliz_client.query(
+                collection_name=collection_name,
+                filter=f'file_path == "{escaped_path}"',
+                output_fields=["file_hash"],
+                limit=1
+            )
+            
+            if results and len(results) > 0:
+                return results[0].get("file_hash")
+            return None
+            
+        except Exception as e:
+            print(f"Error querying file hash: {e}")
+            return None
     
+    def update_chunks_metadata(self, collection_name: str, old_file_path: str, 
+                          new_filename: str, new_file_path: str):
+        """
+        Update filename and file_path in all chunks when file is renamed.
+        Used when content hasn't changed (same hash).
+        """
+        try:
+            # Escape backslashes for Windows paths
+            escaped_old_path = old_file_path.replace("\\", "\\\\")
+            
+            # Query all chunks for the old file path - GET ONLY ID FIRST
+            chunks = self.zilliz_client.query(
+                collection_name=collection_name,
+                filter=f'file_path == "{escaped_old_path}"',
+                output_fields=["id"],
+                limit=10000
+            )
+            
+            if not chunks:
+                print(f"No chunks found for {old_file_path}")
+                return
+            
+            print(f"Found {len(chunks)} chunks to update for rename")
+            
+            # Deduplicate by ID just in case
+            unique_ids = list(set(chunk["id"] for chunk in chunks))
+            print(f"Unique IDs: {len(unique_ids)}")
+            
+            if len(unique_ids) != len(chunks):
+                print(f"⚠️  WARNING: Found {len(chunks) - len(unique_ids)} duplicate IDs in query!")
+            
+            # Now fetch full data for each unique ID
+            for i, chunk_id in enumerate(unique_ids):
+                # Get SPECIFIC fields (not "*")
+                full_data = self.zilliz_client.query(
+                    collection_name=collection_name,
+                    filter=f'id == "{chunk_id}"',
+                    output_fields=[
+                        "id", "text", "filename", "file_type", "file_path", 
+                        "file_hash", "file_size", "indexed_at", "chunk_id",
+                        "section_title", "chunk_summary", "section_context",
+                        "document_summary", "semantic_keywords", "related_chunks",
+                        "cross_references", "keywords_text", "vector"
+                    ],
+                    limit=1
+                )
+                
+                if not full_data:
+                    print(f"⚠️  Could not fetch data for chunk: {chunk_id}")
+                    continue
+                    
+                updated_chunk = full_data[0]
+                
+                # Update ONLY the fields that changed
+                updated_chunk["filename"] = new_filename
+                updated_chunk["file_path"] = new_file_path
+                # file_hash stays the same (content unchanged)
+                
+                if i < 3:  # Log first 3
+                    print(f"  Updating chunk {i+1}/{len(unique_ids)}: {chunk_id}")
+                    print(f"    Old filename: {updated_chunk.get('filename')}")
+                    print(f"    New filename: {new_filename}")
+                
+                # CRITICAL: Upsert with the SAME ID to overwrite
+                try:
+                    self.zilliz_client.upsert(
+                        collection_name=collection_name,
+                        data=[updated_chunk]
+                    )
+                except Exception as e:
+                    print(f"⚠️  Error upserting chunk {chunk_id}: {e}")
+            
+            print(f"✅ Updated {len(unique_ids)} chunks with new filename: {new_filename}")
+            
+        except Exception as e:
+            print(f"❌ Error updating chunk metadata: {e}")
+            import traceback
+            traceback.print_exc()
+
     def search_chunks(self, collection_name: str, query: str, limit: int = 5, 
                  metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -1023,43 +1168,6 @@ Source: {chunk.get('filename', '')}"""
             limit=limit
         )
         
-
-    def debug_collection_schema(self, collection_name: str):
-        """Debug the collection schema and sample data"""
-        try:
-            # Check if collection exists
-            if not self.zilliz_client.has_collection(collection_name):
-                print(f"Collection '{collection_name}' does not exist!")
-                return
-            
-            # Get collection info
-            collection_info = self.zilliz_client.describe_collection(collection_name)
-            print("Collection Schema:")
-            fields = collection_info.get("schema", {}).get("fields", [])
-            for f in fields:
-                print(f"  - {f.get('name')}: {f.get('data_type')}, "
-                    f"analyzer={f.get('enable_analyzer')}, match={f.get('enable_match')}")
-            
-            # Query a few records to see the actual data structure
-            sample_data = self.zilliz_client.query(
-                collection_name=collection_name,
-                filter="",
-                limit=3,
-                output_fields=["filename", "file_type", "chunk_summary"]
-            )
-            
-            print(f"\nSample data ({len(sample_data)} records):")
-            for i, record in enumerate(sample_data):
-                print(f"Record {i+1}:")
-                print(f"  filename: {record.get('filename', 'MISSING')}")
-                print(f"  file_type: {record.get('file_type', 'MISSING')}")
-                print(f"  chunk_summary: {record.get('chunk_summary', 'MISSING')[:50]}...")
-                print()
-                
-        except Exception as e:
-            print(f"Debug error: {e}")
-
-# Example usage
 def main():
     # Initialize the migration tool with both Voyage and OpenAI API keys
     migration_tool = ZillizMigrationTool(
@@ -1150,51 +1258,6 @@ def main():
     except Exception as e:
         print(f"Error in main process: {e}")
 
-def debug_main():
-    """Debug version of main to identify the search issues"""
-    migration_tool = ZillizMigrationTool(
-        voyage_api_key=VOYAGE_API_KEY,
-        zilliz_uri=ZILLIZ_CLOUD_URI,
-        zilliz_token=ZILLIZ_CLOUD_TOKEN,
-        openai_api_key=OPENAI_API_KEY
-    )
-    
-    # Debug the collection
-    print("=== DEBUGGING COLLECTION ===")
-    migration_tool.debug_collection_schema(COLLECTION_NAME)
-    
-    print("\n=== TESTING BASIC SEARCH ===")
-    results = migration_tool.search_chunks(
-        collection_name=COLLECTION_NAME,
-        query="reproductive health",
-        limit=5
-    )
-    print(f"Basic search returned {len(results)} results")
-    
-    print("\n=== TESTING FILTERED SEARCH ===")
-    # Try different filter formats
-    filter_attempts = [
-        'file_type == ".docx"',
-        'file_type == "docx"',
-        'file_type == ".pdf"',
-        'file_type == "pdf"'
-    ]
-    
-    for filter_expr in filter_attempts:
-        print(f"\nTrying filter: {filter_expr}")
-        try:
-            results = migration_tool.search_chunks(
-                collection_name=COLLECTION_NAME,
-                query="reproductive health",
-                limit=5,
-                metadata_filter=filter_expr
-            )
-            print(f"  SUCCESS: {len(results)} results")
-            if results:
-                print(f"  Sample file_type values: {[r.get('file_type') for r in results[:2]]}")
-        except Exception as e:
-            print(f"  FAILED: {e}")
-
 if __name__ == "__main__":
     main()
-    #debug_main()
+    

@@ -13,6 +13,11 @@
 # limitations under the License.
 import os
 import sys
+import subprocess
+import time
+
+
+
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -67,6 +72,16 @@ from agents.policy_pulse_agent.ReportWriting_OpenAI_agent import ReportWriting_O
 
 APP_NAME = "policy_pulse_app"
 USER_ID = "default_user"
+
+# Start MCP server as subprocess
+mcp_proc = subprocess.Popen(
+    ["python", "maps_mcp_server.py"],  # or absolute path
+    env={**os.environ, "GOOGLE_MAPS_API_KEY": os.environ["GOOGLE_MAPS_API_KEY"]},
+)
+
+# Give it a few seconds to boot up
+time.sleep(3)
+
 
 # Read your DB URL from env
 db_url = os.environ.get("DATABASE_URL")  # e.g. "postgresql://user:pass@host:5432/dbname"

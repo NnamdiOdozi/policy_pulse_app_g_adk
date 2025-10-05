@@ -17,6 +17,8 @@ import logging
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.agents import Agent
 from google.adk.tools import  google_search
+from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from google.genai import types
 from ..tools import  search_with_tavily_faq, search_with_exa, _retrieve_context_zilliz
 
@@ -24,7 +26,13 @@ from ..tools import  search_with_tavily_faq, search_with_exa, _retrieve_context_
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-
+maps_toolset = MCPToolset(
+    connection_params=StdioConnectionParams(
+        command="python",
+        args=["../mcp_server.py"],
+        env={"GOOGLE_MAPS_API_KEY": os.environ["GOOGLE_MAPS_API_KEY"]},
+    )
+)
 
 INSTRUCTION = (
         "You are an general purpose assistant specializing in workplace reproductive and fertility health.\n\n"
@@ -85,5 +93,5 @@ FAQ_agent = Agent(
     generate_content_config=types.GenerateContentConfig(
         temperature=0.1,  # Adjust as needed (0.0-1.0)
     ),
-    tools=[ _retrieve_context_zilliz, search_with_exa]
+    tools=[ _retrieve_context_zilliz, search_with_exa,  maps_toolset]
 )
