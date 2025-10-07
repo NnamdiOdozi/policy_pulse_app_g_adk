@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath(project_root))
 
 from old_pulse.ai_agent import retrieve_relevant_chunks
 
-from cachetools import TTLCache
+from cachetools import cached, TTLCache
 import hashlib
 from zilliz_embedding import ZillizMigrationTool
 
@@ -43,7 +43,7 @@ def get_zilliz_client():
     """Get the cached ZillizMigrationTool instance."""
     return _get_cached_zilliz_client()
 
-# Create a cache that expires entries after 30 minutes. This is used by the RAG retrieval tool
+# Create a cache that expires entries after 30 minutes. This is used by the Zilliz RAG retrieval tool
 search_cache = TTLCache(maxsize=50, ttl=1800)  # 50 queries, 30min expiry
 
 def _cache_key(query: str, collection: str) -> str:
@@ -214,17 +214,25 @@ def _search_with_tavily(query: str, max_results: int = 5, char_limit: int = 1000
     except Exception as e:
         return {"error": f"Tavily FAQ search failed: {str(e)}"}
 
+# Create cache
+tavily_cache = TTLCache(maxsize=50, ttl=3600)
+@cached(cache=tavily_cache)
 def _tavily_search(api_key: str, query: str, search_depth: str, include_raw: bool, 
                   max_results: int, domains: list[str] = None) -> Dict[str, Any]:
     """Helper function to perform a Tavily search with the given parameters."""
     endpoint = "https://api.tavily.com/search"
+
+    # CRITICAL: Normalize max_results to standard values
+    # This improves cache hit rate
+    normalized_results = 3 if max_results < 5 else 5
+
     payload = {
         "api_key": api_key,
         "query": query,
         "search_depth": search_depth,
         "include_answer": True,
         "include_raw_content": include_raw,
-        "max_results": min(max_results, 20),
+        "max_results": normalized_results,
         "topic": "general"
     }
     
@@ -277,7 +285,9 @@ def search_with_tavily_report(query: str, max_results: int = 8) -> Dict[str, Any
     
     return result
 
-
+# Create cache
+exa_cache = TTLCache(maxsize=50, ttl=3600)
+@cached(cache=exa_cache)
 def search_with_exa(query: str, max_results: int = 5) -> Dict[str, Any]:
     """
     Search the web using Exa AI's neural/semantic search engine.
@@ -307,10 +317,14 @@ def search_with_exa(query: str, max_results: int = 5) -> Dict[str, Any]:
         
         exa = Exa(api_key=api_key)
         
+        # CRITICAL: Normalize max_results to standard values
+        # This improves cache hit rate
+        normalized_results = 3 if max_results < 5 else 5
+
         # Use search_and_contents - REVERTED to original settings
         exa_results = exa.search_and_contents(
             query=query,
-            num_results=min(max_results, 5),
+            num_results=normalized_results,
             type="fast",
             livecrawl="never",
             text={"max_characters": 500}  # REVERTED back to 500
@@ -545,7 +559,7 @@ def _retrieve_context_zilliz(query: str,
     """
     
     # Set default collection name
-    collection = collection_name or os.getenv("ZILLIZ_COLLECTION_NAME", "docs_voyage_3_large")
+    collection = collection_name or os.getenv("ZILLIZ_COLLECTION_NAME")
     
     # Check cache first
     cache_key = _cache_key(query, collection)

@@ -40,7 +40,6 @@ zilliz_client = ZillizMigrationTool(
     openai_api_key=os.getenv("OPENAI_API_KEY")
 )
 
-
 class DocumentEventHandler(FileSystemEventHandler):
     """Handles file system events and manages debouncing."""
     

@@ -73,14 +73,14 @@ from agents.policy_pulse_agent.ReportWriting_OpenAI_agent import ReportWriting_O
 APP_NAME = "policy_pulse_app"
 USER_ID = "default_user"
 
-# Start MCP server as subprocess
-mcp_proc = subprocess.Popen(
-    ["python", "maps_mcp_server.py"],  # or absolute path
-    env={**os.environ, "GOOGLE_MAPS_API_KEY": os.environ["GOOGLE_MAPS_API_KEY"]},
-)
+# # Start MCP server as subprocess
+# mcp_proc = subprocess.Popen(
+#     ["python", "maps_mcp_server.py"],  # or absolute path
+#     env={**os.environ, "GOOGLE_MAPS_API_KEY": os.environ["GOOGLE_MAPS_API_KEY"]},
+# )
 
-# Give it a few seconds to boot up
-time.sleep(3)
+# # Give it a few seconds to boot up
+# time.sleep(3)
 
 
 # Read your DB URL from env
@@ -571,7 +571,7 @@ INSTRUCTION = (
 
 #model= "gemini-2.5-flash-preview-05-20"
 # 
-model="gemini-2.5-pro"
+model="gemini-2.5-flash"
 #
 model_sonar=LiteLlm(
         model="openrouter/perplexity/sonar-pro",
