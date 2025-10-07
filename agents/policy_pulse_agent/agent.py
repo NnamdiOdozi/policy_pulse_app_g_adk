@@ -599,7 +599,7 @@ root_agent = Agent(
         temperature=0.2,  # Adjust as needed (0.0-1.0)
     
     ),
-    before_agent_callback=fast_route_before_agent_callback,    
+    #before_agent_callback=fast_route_before_agent_callback,    
     #sub_agents = []
 )
 
@@ -611,7 +611,7 @@ runner = Runner(
     artifact_service=artifact_service,
     app_name = APP_NAME,
     agent = root_agent,
-    plugins=[routing_plugin, TripwirePlugin()]
+    plugins=[TripwirePlugin()]
 )
 
 # If you want a CLI entrypoint—in case you ever `python agent.py`
