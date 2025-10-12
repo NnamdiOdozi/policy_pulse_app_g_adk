@@ -20,7 +20,7 @@ from google.adk.tools import  google_search
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from google.genai import types
-from ..tools import  search_with_tavily_faq, search_with_exa, _retrieve_context_zilliz
+from ..tools import search_with_tavily_faq, search_with_exa, _retrieve_context_zilliz
 
 # Configure detailed logging
 logging.basicConfig(level=logging.DEBUG)

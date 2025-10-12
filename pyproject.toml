@@ -45,9 +45,10 @@ dependencies = [
     "langchain-openai>=0.3.32",
     "tqdm>=4.67.1",
     "cachetools>=5.5.2",
-    "google-adk==1.15",
+    "google-adk==1.14",
     "googlemaps>=4.10.0",
     "google-maps-addressvalidation>=0.3.20",
     "modelcontextprotocol>=0.1.0",
     "watchdog>=6.0.0",
+    "litellm==1.78",
 ]

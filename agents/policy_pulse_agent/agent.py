@@ -16,9 +16,6 @@ import sys
 import subprocess
 import time
 
-
-
-
 # Load environment variables
 from dotenv import load_dotenv
 load_dotenv()
@@ -611,12 +608,11 @@ runner = Runner(
     artifact_service=artifact_service,
     app_name = APP_NAME,
     agent = root_agent,
-    plugins=[TripwirePlugin()]
+    #plugins=[TripwirePlugin()]
 )
 
 # If you want a CLI entrypoint—in case you ever `python agent.py`
 if __name__ == "__main__":
-    import asyncio
     from google.genai import types
     import uuid
     
