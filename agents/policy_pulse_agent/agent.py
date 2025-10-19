@@ -1,16 +1,21 @@
-# Copyright 2025 Google LLC
+"""
+Policy Pulse Root Agent
 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+ARCHITECTURE OVERVIEW:
+This is the root/supervisor agent that orchestrates the Policy Pulse application.
+It manages two specialized sub-agents:
+- FAQ_agent: Handles quick factual questions using RAG
+- ReportWriting_agent: Manages multi-turn policy document creation
 
-#     https://www.apache.org/licenses/LICENSE-2.0
+Why separate sub-agents? - Specialization improves response quality and reduces token costs
 
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+UNUSUAL PATTERNS TO NOTE:
+- Fast-path routing: Bypasses normal agent flow for FAQ queries (see RoutingPlugin)
+- Context compression: Not yet implemented, but see comments about future optimization
+- Tool wrapping: AgentTool wraps entire sub-agents as "tools" the root agent can call
+"""
+
+import asyncio
 import os
 import sys
 import subprocess
@@ -18,13 +23,16 @@ import time
 
 # Load environment variables
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv()  # Load environment variables first (DATABASE_URL, API keys, etc.)
 
 import logging
 # Configure detailed logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# === OBSERVABILITY SETUP ===
+# AgentOps provides monitoring/tracing for AI agent behavior in production
+# WHY: Helps debug multi-agent interactions and track tool usage
 import agentops
 # Initialize AgentOps before defining agents
 agentops.init(
@@ -32,45 +40,48 @@ agentops.init(
     trace_name="policy-pulse-debug"
 )
 
+# === GOOGLE ADK IMPORTS ===
+# Agent Development Kit (ADK) - Google's framework for building agentic systems
 from google.adk.agents import Agent
-from google.adk.sessions import DatabaseSessionService, InMemorySessionService
-import asyncio
-from google.adk.runners import Runner
+from google.adk.sessions import DatabaseSessionService, InMemorySessionService # Session persistence options
+from google.adk.runners import Runner # Executes agent conversations
 from google.adk.models.lite_llm import LiteLlm
-from google.adk.artifacts.in_memory_artifact_service import InMemoryArtifactService
-from google.adk.tools import FunctionTool, agent_tool, google_search
-from google.adk.tools.agent_tool import AgentTool
-from google.adk.agents.callback_context import CallbackContext
+from google.adk.artifacts.in_memory_artifact_service import InMemoryArtifactService # Artifact storage
+from google.adk.tools import FunctionTool, agent_tool, google_search #Wtappers for Python functions as tools
+from google.adk.tools.agent_tool import AgentTool #Wraps entire agents as tools
+from google.adk.agents.callback_context import CallbackContext #Access to session state during execution
 from google.adk.models import LlmRequest, LlmResponse
-from google.adk.plugins.base_plugin import BasePlugin 
-from google.adk.agents.invocation_context import InvocationContext
-
+from google.adk.plugins.base_plugin import BasePlugin # For custom pre/post-processing logic
+from google.adk.agents.invocation_context import InvocationContext # For plugin callbacks
 
 from google.genai import types
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
 
+import psycopg2
+from psycopg2.extras import RealDictCursor # Returns query results as dictionaries
 import re
 from typing import Optional
+from sqlalchemy import create_engine  # For connection pooling
+from sqlalchemy.pool import QueuePool # Manages DB connection pool
 
-# Add this path manipulation
+# === PATH SETUP ===
+# UNUSUAL: We manipulate sys.path to allow imports from parent directories
+# WHY: Streamlit runs from front_end/, but we need to import from agents/
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.join(current_dir, '..' , '..')
 sys.path.insert(0, os.path.abspath(project_root))
 
-from sqlalchemy import create_engine  # This will work - SQLAlchemy is already installed
-from sqlalchemy.pool import QueuePool
-
-#
+# === IMPORT SUB-AGENTS ===
+# Each sub-agent is defined in its own folder with specialized instructions
 from agents.policy_pulse_agent.FAQ_agent import FAQ_agent
 from agents.policy_pulse_agent.ReportWriting_agent import ReportWriting_agent
 from agents.policy_pulse_agent.ReportWriting_OpenAI_agent import ReportWriting_OpenAI_agent
 
-APP_NAME = "policy_pulse_app"
-USER_ID = "default_user"
+# === CONFIGURATION ===
+APP_NAME = "policy_pulse_app"  # Used to namespace sessions in database
+USER_ID = "default_user"  # Fallback if no user context provided
 
-# # Start MCP server as subprocess
+# # Start MCP server as subprocess - this was just an experiment and is not needed for this project
 # mcp_proc = subprocess.Popen(
 #     ["python", "maps_mcp_server.py"],  # or absolute path
 #     env={**os.environ, "GOOGLE_MAPS_API_KEY": os.environ["GOOGLE_MAPS_API_KEY"]},
@@ -79,23 +90,10 @@ USER_ID = "default_user"
 # # Give it a few seconds to boot up
 # time.sleep(3)
 
-
-# Read your DB URL from env
+# === DATABASE SETUP ===
 db_url = os.environ.get("DATABASE_URL")  # e.g. "postgresql://user:pass@host:5432/dbname"
 if not db_url:
     raise RuntimeError("Please set DATABASE_URL in your .env")
-
-# Shared database connection function for use in auth.py and session_utils.py
-def get_db_connection_old():
-    """Get database connection with robust configuration"""
-    return psycopg2.connect(
-        db_url, 
-        cursor_factory=RealDictCursor,
-        sslmode="require",
-        keepalives_idle=60,
-        keepalives_interval=15,
-        keepalives_count=5
-    )
 
 # Create pool once at module level
 _engine = None
@@ -119,7 +117,23 @@ class PooledConnection:
         return self.raw_conn.commit()
 
 def get_db_connection():
-    """Get database connection with pooling"""
+    """
+    Get database connection with pooling
+        
+    WHY POOLING? Opening/closing DB connections is expensive.
+    Connection pooling maintains a pool of reusable connections.
+    
+    TRADE-OFFS:
+    - More memory usage (keeping connections open)
+    - Better performance (no connection overhead)
+    - Requires proper cleanup (use context managers)
+    
+    POOL SETTINGS:
+    - pool_size=10: Keep 10 connections ready
+    - max_overflow=20: Allow up to 30 total connections under load
+    - pool_recycle=240: Recycle connections every 4 minutes (prevents stale connections)
+    - pool_pre_ping=True: Test connection before use (catches dropped connections)
+    """
     global _engine
     if _engine is None:
         _engine = create_engine(
@@ -141,9 +155,6 @@ def get_db_connection():
     raw_conn = _engine.raw_connection()
     return PooledConnection(raw_conn)
 
-# Instantiate the persistent session service
-from google.adk.sessions import DatabaseSessionService
-
 session_service = DatabaseSessionService(
     db_url=db_url,               # your full supabase://…5432/postgres URL
     # 1) test every checkout:
@@ -159,12 +170,39 @@ session_service = DatabaseSessionService(
     },
 )
 
+# === ARTIFACT SERVICE ===
+# Artifacts are large outputs (documents, code) that agents generate
+# WHY IN-MEMORY? We don't need persistence for artifacts - they're regenerated on demand
 # (Optional) Artifact service—keeps artifacts in memory; swap for a DB-based store if you need
 artifact_service = InMemoryArtifactService()
 
+# =============================================================================
+# ROUTING LOGIC - QUERY CLASSIFICATION
+# =============================================================================
+
 # The 4 functions below are to achieve query routing so as to speed up response times for short answer questions
 def classify_query_intent(query: str) -> dict:
-    """Classify query intent and complexity for routing hints"""
+    """Classify query intent and complexity for routing hints
+
+    WHY? Different query types need different handling:
+    - Simple FAQs: Fast-path to FAQ_agent (skip heavy planning)
+    - Policy requests: Route to ReportWriting_agent
+    - Conversational: Let root agent handle
+    
+    APPROACH: Uses regex patterns + keyword scoring
+    - Simple but effective for POC
+    - Alternative: Could use an LLM classifier for more accuracy
+    - Trade-off: Keywords are fast but less flexible
+    
+    Returns:
+        dict with keys:
+        - intent: 'faq' | 'report_creation' | 'general'
+        - complexity_score: float 0-1
+        - domain_confidence: float 0-1
+        - has_question_mark: bool
+        - word_count: int
+    
+    """
     query_lower = query.lower().strip()
     
     # Report creation patterns
@@ -251,7 +289,37 @@ def generate_routing_hints(query_analysis: dict, conversation_state: dict) -> di
         "hint": "Complex or unclear query - use full reasoning"
     }
 
+# =============================================================================
+# ROUTING PLUGIN - FAST-PATH OPTIMIZATION
+# =============================================================================
+
 class RoutingPlugin(BasePlugin):
+    """
+    Custom plugin that implements "fast-path" routing for FAQ queries.
+    
+    CONTEXT ENGINEERING TECHNIQUE: "Offload and bypass"
+    Instead of sending every query through the full agent planning cycle:
+    1. Classify query intent BEFORE the root agent sees it
+    2. For simple FAQs, directly call FAQ_agent
+    3. Skip the root agent's chain-of-thought planning (saves tokens)
+    4. Return result immediately
+    
+    WHY THIS WORKS:
+    - FAQ queries are stateless (don't need conversation context)
+    - FAQ_agent is specialized and fast
+    - Root agent's planning adds latency without value for simple queries
+    
+    TRADE-OFFS:
+    - Faster response (2-3s saved)
+    - Lower token cost (~1000 tokens saved)
+    - BUT: Bypasses root agent's quality control/review
+    
+    WHEN NOT TO USE:
+    - Complex queries needing context
+    - Follow-up questions
+    - Queries needing multi-agent coordination
+    """
+
     def __init__(self):
         print("[RoutingPlugin] __init__")
         super().__init__(name="routing_plugin")
@@ -261,6 +329,14 @@ class RoutingPlugin(BasePlugin):
         invocation_context: InvocationContext,
         user_message: types.Content,
     ) -> Optional[types.Content]:
+        """
+        Hook that runs BEFORE the root agent processes the message.
+        
+        This is where the magic happens - we can intercept the message,
+        analyze it, and potentially return a response without ever
+        calling the root agent's LLM.
+        """
+        
         # -- visible in `adk web` logs --
         print("[RoutingPlugin] on_user_message_callback fired")
         # Extract raw text
@@ -270,6 +346,8 @@ class RoutingPlugin(BasePlugin):
 
         session = invocation_context.session
         state = session.state or {}
+
+        # Classify query and store in session state for observability
         qa = classify_query_intent(user_text)
         hints = generate_routing_hints(qa, state.get("conversation_state", {}))
         state.update({"routing_analysis": qa, "routing_hints": hints, "last_query": user_text})
@@ -331,8 +409,16 @@ class TripwirePlugin(BasePlugin): # this is just for testing if plugins are work
         print("[TripwirePlugin] fired with:", user_message)
         return None
 
-# --- helpers ---
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
 def _content_to_text(msg: types.Content | str) -> str:
+    """
+    Extract plain text from Google's Content type
+    
+    WHY NEEDED? ADK uses structured Content objects with parts.
+    We often need just the raw text string for processing.
+    """
     if isinstance(msg, str):
         return msg.strip()
     out = []
@@ -343,6 +429,14 @@ def _content_to_text(msg: types.Content | str) -> str:
     return " ".join(out).strip()
 
 def _drain_run_and_get_assistant_content(runner, *, user_id: str, session_id: str, new_message: types.Content) -> types.Content:
+    """
+    Run an agent and extract the final assistant response.
+    
+    WHY "DRAIN"? runner.run() returns a generator of events.
+    We need to consume all events and extract the final response.
+    
+    This is a synchronous wrapper around ADK's event stream.
+    """
     last_assistant = None
     for ev in runner.run(user_id=user_id, session_id=session_id, new_message=new_message):
         content = getattr(ev, "content", None)
@@ -356,6 +450,14 @@ def _drain_run_and_get_assistant_content(runner, *, user_id: str, session_id: st
     return last_assistant
 
 def _make_review_prompt(faq_text: str) -> str:
+    """
+    Generate a prompt for the root agent to review FAQ_agent's output
+    
+    WHY REVIEW? FAQ_agent might include:
+    - Inappropriate content
+    - Incorrect citations
+    - PII that should be masked
+    """
     return (
         "The FAQ_agent has produced a draft answer. "
         "As the supervisor agent, your role now is to critically review this draft "
@@ -451,7 +553,9 @@ def fast_route_before_agent_callback(callback_context: CallbackContext, **kwargs
     # Returning Content here makes ADK skip the first heavy root LLM call
     return reviewed_content
 
-
+# =============================================================================
+# ROOT AGENT INSTRUCTIONS
+# =============================================================================
 
 INSTRUCTION = (
     "You are the supervisor agent for the Policy Pulse App which is a compliance assistant specializing in workplace reproductive and fertility health.\n\n"
@@ -575,9 +679,14 @@ model_openai=LiteLlm(
         api_key=os.environ.get("OPENROUTER_API_KEY"),
     )
 
+# === WRAP SUB-AGENTS AS TOOLS ===
+# UNUSUAL: We wrap entire agents as tools
+# WHY? Allows root agent to "call" sub-agents via tool calling interface
+# The root agent sees these as function calls, ADK handles the delegation
 FAQ_tool = AgentTool(agent=FAQ_agent)
 ReportWriting_tool = AgentTool(agent=ReportWriting_OpenAI_agent)
 
+# === CREATE ROOT AGENT ===
 root_agent = Agent(
     name="root_agent",
     model=model,
@@ -596,7 +705,10 @@ root_agent = Agent(
 
 # Register the plugin
 routing_plugin = RoutingPlugin()
-#5) Set up your Runner
+
+# === CREATE RUNNER ===
+# Runner executes the agent conversation loop
+# Plugins are registered here
 runner = Runner(
     session_service=session_service,
     artifact_service=artifact_service,
@@ -605,9 +717,16 @@ runner = Runner(
     
 )
 
+# =============================================================================
+# CLI ENTRY POINT (for testing)
+# =============================================================================
 # If you want a CLI entrypoint—in case you ever `python agent.py`
+
 if __name__ == "__main__":
-    from google.genai import types
+    """
+    This runs when you execute: python agent.py
+    Useful for testing the agent without Streamlit frontend.
+    """
     import uuid
     
     async def main():
@@ -618,7 +737,7 @@ if __name__ == "__main__":
         print(f"📝 Using session ID: {session_id}")
         
         try:
-            # AWAIT the async create_session method
+            # Create session
             session = await session_service.create_session(
                 app_name=APP_NAME,
                 user_id=USER_ID,
@@ -647,7 +766,8 @@ if __name__ == "__main__":
         
         print("🚀 Policy Pulse Agent Ready!")
         print("Type 'quit' to exit\n")
-        
+
+        # Simple REPL Loop
         while True:
             try:
                 user_input = input("🤔 You: ")
@@ -662,7 +782,7 @@ if __name__ == "__main__":
                     parts=[types.Part(text=user_input)]
                 )
                 
-                # Use run_async with EXACT same parameters as session creation
+                # Use run_async with EXACT same parameters as session creation to run agent
                 async for event in runner.run_async(
                     user_id=USER_ID,        # Must match session creation
                     session_id=session_id,  # Must match session creation
@@ -672,7 +792,7 @@ if __name__ == "__main__":
                         for part in event.content.parts:
                             if hasattr(part, 'text'):
                                 print(part.text, end="", flush=True)
-                print("\n")
+                print("\n") # New line after response
                 
             except KeyboardInterrupt:
                 print("\n👋 Goodbye!")

@@ -1,4 +1,9 @@
 # Create new file: front-end/template_manager.py
+# =============================================================================
+# POLICY TEMPLATE MANAGEMENT
+# =============================================================================
+# PURPOSE: Generate and manage dynamic policy document templates
+# WHY DYNAMIC?: Each user request is unique (different topics, length, focus)
 
 import json
 import os

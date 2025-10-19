@@ -1,7 +1,70 @@
 # Create new file: front-end/dynamic_sections.py
+# =============================================================================
+# DYNAMIC TEMPLATE GENERATION
+# =============================================================================
+# PURPOSE: Convert questionnaire answers into structured document template
+# KEY CONCEPT: Template drives content generation (not LLM hallucination)
+
 
 def generate_dynamic_template(responses):
-    """Generate dynamic template based on questionnaire responses"""
+    """
+    Generate document template from user's questionnaire responses
+    
+    INPUT: questionnaire_data dict containing:
+    - document_type: "policy", "guidelines", or "guide"
+    - topics: List of areas to cover (e.g., ["maternity", "fertility"])
+    - compliance: Regulatory requirements (e.g., ["UK", "GDPR"])
+    - word_count: Target length (e.g., 3000)
+    - company_context: Optional existing policy text
+    
+    OUTPUT: Structured template with:
+    - Section hierarchy (headings, subheadings)
+    - Word count targets per section
+    - Required vs optional sections
+    - Compliance checkpoints
+    
+    WHY TEMPLATES MATTER:
+    - Consistency: Every policy has same structure
+    - Completeness: No missing sections
+    - Guidance: Agent knows what to write
+    - Quality: Structured output, not rambling
+    
+    SECTION GENERATION LOGIC:
+    1. Map topics to standard sections (e.g., "maternity" → "Maternity Leave Policy")
+    2. Allocate word count proportionally
+    3. Add compliance requirements as subsections
+    4. Mark required vs optional based on best practices
+    
+    EXAMPLE TEMPLATE:
+    {
+      "sections": [
+        {
+          "title": "1. Introduction",
+          "word_count": 200,
+          "required": true,
+          "prompts": ["State purpose", "Define scope"]
+        },
+        {
+          "title": "2. Maternity Leave",
+          "word_count": 800,
+          "required": true,
+          "subsections": [
+            {
+              "title": "2.1 Eligibility",
+              "word_count": 200,
+              "compliance": ["UK statutory requirements"]
+            }
+          ]
+        }
+      ]
+    }
+    
+    DESIGN PRINCIPLES:
+    - Top-down: Start with high-level structure
+    - Proportional: Distribute word count based on importance
+    - Flexible: Allow agent creativity within structure
+    - Complete: Cover all user-requested topics
+    """
     
     doc_type = responses.get('document_type', 'policy')
     focus = responses.get('policy_focus', 'comprehensive')

@@ -1,4 +1,9 @@
 # front-end/word_generator.py
+# =============================================================================
+# WORD DOCUMENT GENERATION
+# =============================================================================
+# PURPOSE: Convert AI-generated text into formatted Word document
+# LIBRARY: python-docx for .docx file creation
 
 from docx import Document
 from docx.shared import Inches, Pt
@@ -10,7 +15,44 @@ import re
 from datetime import datetime
 
 def generate_policy_word_doc(policy_text, title="Policy Document"):
-    """Generate a formatted Word document from policy text"""
+    """   
+    Create downloadable Word document from policy text
+    
+    FORMATTING APPLIED:
+    1. Title: Bold, 16pt, centered
+    2. Headings: Bold, 14pt, numbered (1., 2., 3.)
+    3. Subheadings: Bold, 12pt, numbered (1.1, 1.2)
+    4. Body text: Normal, 11pt, justified
+    5. Lists: Bulleted or numbered as appropriate
+    
+    PARSING LOGIC:
+    - Detect headings by: "# " prefix or "1." numbering
+    - Detect subheadings by: "## " prefix or "1.1" numbering
+    - Detect lists by: "-" or "*" or "1)" prefix
+    - Everything else treated as body paragraph
+    
+    WHY WORD FORMAT?:
+    - Industry standard for policy documents
+    - Users can edit further (not PDF locked)
+    - Preserves formatting better than plain text
+    - Easy to share internally (universal format)
+    
+    STYLING:
+    - Uses built-in python-docx styles
+    - Custom styles defined for consistency
+    - Matches typical corporate document style
+    
+    DOWNLOAD MECHANISM:
+    - File saved to temporary location
+    - Streamlit st.download_button displays
+    - User clicks to download
+    - Temp file cleaned up after download
+    
+    ERROR HANDLING:
+    - Malformed markdown handled gracefully
+    - Falls back to plain text if parsing fails
+    - Logs warnings for debugging
+    """
     
     doc = Document()
     
