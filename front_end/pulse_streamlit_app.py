@@ -252,36 +252,37 @@ def detect_complete_policy_document(response):
     """FIXED: Only detect actual complete policy documents, not meta-commentary"""
     
     # Must have substantial content (not just meta-commentary)
-    if len(response) < 1500:
+    if len(response) < 800:
         return False
     
-    # Must NOT contain meta-commentary phrases
-    meta_phrases = [
-        "Here is the draft",
-        "Key points for your review:",
-        "[Policy text as drafted above]",
-        "Please review and let me know",
-        "Any revisions or specific formatting preferences?",
-        "To ensure I tailor the document precisely",
-        "What type of document do you need:",
-        "What's the main focus:",
-        "Which specific areas should be covered?"
-    ]
+    # # Must NOT contain meta-commentary phrases
+    # meta_phrases = [
+    #     "Here is the draft",
+    #     "Key points for your review:",
+    #     "[Policy text as drafted above]",
+    #     "Please review and let me know",
+    #     "Any revisions or specific formatting preferences?",
+    #     "To ensure I tailor the document precisely",
+    #     "What type of document do you need:",
+    #     "What's the main focus:",
+    #     "Which specific areas should be covered?"
+    # ]
     
-    for phrase in meta_phrases:
-        if phrase in response:
-            return False
+    # for phrase in meta_phrases:
+    #     if phrase in response:
+    #         return False
     
-    # Must contain multiple numbered sections with actual content
-    numbered_sections = len(re.findall(r'^\d+\.', response, re.MULTILINE))
-    if numbered_sections < 3:
-        return False
+    # # Must contain multiple numbered sections with actual content
+    # numbered_sections = len(re.findall(r'^\d+\.', response, re.MULTILINE))
+    # if numbered_sections < 3:
+    #     return False
     
-    # Must contain policy-like structure
+    # Check for policy-like structure (more lenient)
     policy_indicators = [
-        'POLICY' in response.upper(),
-        'Purpose' in response or 'Scope' in response,
-        'Version' in response or 'v1.0' in response.lower()
+        'POLICY' in response.upper() or 'policy' in response.lower(),
+        any(word in response for word in ['Purpose', 'Scope', 'Objectives', 'Introduction']),
+        bool(re.search(r'^\d+[\.\)]\s+\w', response, re.MULTILINE)),  # Any numbered sections
+        len(response.split('\n')) > 20,  # Has multiple paragraphs
     ]
     
     return sum(policy_indicators) >= 2
@@ -346,7 +347,7 @@ User Requirements Summary:
 - Detail Level: {st.session_state.questionnaire_data.get('detail_level', 'standard')}
 
 Uploaded Documents Context:
-{chr(10).join([f"- {doc['filename']}: {doc['content'][:500]}..." for doc in st.session_state.uploaded_docs]) if st.session_state.uploaded_docs else "No documents uploaded"}
+{chr(10).join([f"- {doc['filename']}: {doc['content'][::]}..." for doc in st.session_state.uploaded_docs]) if st.session_state.uploaded_docs else "No documents uploaded"}
 
 Please generate the complete policy document following the template structure above."""
         
@@ -537,7 +538,26 @@ def chat_interface():
                                     )
                             except Exception as e:
                                 st.error(f"Error generating Word document: {str(e)}")
-                        
+                        else:
+                            # ✅ ADD THIS SECTION - Manual override when detection fails
+                            st.markdown("---")
+                            st.info("💡 The policy appears complete but automatic detection didn't trigger. You can manually generate the Word document below.")
+                            
+                            if st.button("📄 Generate Word Document", use_container_width=True, type="primary"):
+                                try:
+                                    word_buffer = generate_policy_word_doc(policy_response)
+                                    st.download_button(
+                                        label="⬇️ Download Your Policy Document",
+                                        data=word_buffer.getvalue(),
+                                        file_name=f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        use_container_width=True,
+                                        type="primary"
+                                    )
+                                    st.success("✅ Word document ready for download!")
+                                except Exception as e:
+                                    st.error(f"❌ Error generating Word document: {str(e)}")
+
                         # Add policy to messages
                         st.session_state.messages.append({"role": "assistant", "content": policy_response})
                         
@@ -577,7 +597,25 @@ def chat_interface():
                             st.error(f"Error generating Word document: {str(e)}")
                     else:
                         st.markdown(response)
-                    
+                        # ✅ ADD THIS SECTION - Manual override when detection fails
+                        st.markdown("---")
+                        st.info("💡 The policy appears complete but automatic detection didn't trigger. You can manually generate the Word document below.")
+                        
+                        if st.button("📄 Generate Word Document", use_container_width=True, type="primary"):
+                            try:
+                                word_buffer = generate_policy_word_doc(response)
+                                st.download_button(
+                                    label="⬇️ Download Your Policy Document",
+                                    data=word_buffer.getvalue(),
+                                    file_name=f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    use_container_width=True,
+                                    type="primary"
+                                )
+                                st.success("✅ Word document ready for download!")
+                            except Exception as e:
+                                st.error(f"❌ Error generating Word document: {str(e)}")
+
                     st.session_state.messages.append({"role": "assistant", "content": response})
         
         # Auto-save conversation

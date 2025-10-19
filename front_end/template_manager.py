@@ -11,6 +11,45 @@ from datetime import datetime
 from pathlib import Path
 
 class PolicyTemplateManager:
+    """
+    Manages policy template lifecycle (create, store, retrieve)
+    
+    DESIGN PATTERN: Manager class for template CRUD operations
+    - Create: Generate template from questionnaire
+    - Store: Save template to filesystem/database
+    - Retrieve: Load template for document generation
+    - Update: Modify template based on user feedback
+    
+    WHY NOT DATABASE?:
+    - Templates are large JSON structures
+    - Not frequently queried or searched
+    - Filesystem is simpler for development
+    - Can migrate to DB later if needed
+    
+    TEMPLATE STRUCTURE:
+    {
+      "document_type": "policy|guidelines|guide",
+      "topics": ["maternity", "paternity", "fertility"],
+      "sections": [
+        {
+          "title": "Maternity Leave",
+          "required": true,
+          "word_count_target": 500,
+          "subsections": [...]
+        }
+      ],
+      "compliance_requirements": ["UK", "GDPR"],
+      "total_word_count": 3000
+    }
+    
+    LIFECYCLE:
+    1. User completes questionnaire
+    2. generate_dynamic_template() creates structure
+    3. save_template() persists to disk
+    4. ReportWriting_agent loads and fills sections
+    5. Root agent reviews final output
+    """
+
     def __init__(self, templates_dir="policy_templates"):
         self.templates_dir = Path(templates_dir)
         self.templates_dir.mkdir(exist_ok=True)
