@@ -51,4 +51,5 @@ dependencies = [
     "modelcontextprotocol>=0.1.0",
     "watchdog>=6.0.0",
     "litellm==1.78",
+    
 ]

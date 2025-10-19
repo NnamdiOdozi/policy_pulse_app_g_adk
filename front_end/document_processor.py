@@ -39,7 +39,7 @@ def extract_from_pdf(uploaded_file):
         text.append(page.extract_text())
     return '\n'.join(text)
 
-def summarize_document_if_needed(text, max_length=20000): # I should probably include AI summarization here
+def summarize_document_if_needed(text, max_length=200000): # I should probably include AI summarization here
     """Summarize document if it exceeds context limits"""
     if len(text) <= max_length:
         return text, False

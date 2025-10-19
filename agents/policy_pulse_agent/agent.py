@@ -33,7 +33,7 @@ agentops.init(
 )
 
 from google.adk.agents import Agent
-from google.adk.sessions import DatabaseSessionService
+from google.adk.sessions import DatabaseSessionService, InMemorySessionService
 import asyncio
 from google.adk.runners import Runner
 from google.adk.models.lite_llm import LiteLlm
@@ -562,12 +562,6 @@ INSTRUCTION = (
     " Never include URLs, sources, or references unless they were directly returned by search tools. All claims requiring factual verification must use an appropriate websearch tool first, and only include references from the tool response.\n"
     "Before making any factual claims about current information, you MUST use an appropriate websearch tool. If the search fails or returns no results, state clearly that you could not verify the information rather than providing potentially outdated information.\n"
 )
-
-# just testing
-#_retrieve_context("what are the goals of We Are Eden")
-
-#model= "gemini-2.5-flash-preview-05-20"
-# 
 model="gemini-2.5-flash"
 #
 model_sonar=LiteLlm(
@@ -608,7 +602,7 @@ runner = Runner(
     artifact_service=artifact_service,
     app_name = APP_NAME,
     agent = root_agent,
-    #plugins=[TripwirePlugin()]
+    
 )
 
 # If you want a CLI entrypoint—in case you ever `python agent.py`
