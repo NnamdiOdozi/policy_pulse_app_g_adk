@@ -539,24 +539,26 @@ def chat_interface():
                             except Exception as e:
                                 st.error(f"Error generating Word document: {str(e)}")
                         else:
-                            # ✅ ADD THIS SECTION - Manual override when detection fails
-                            st.markdown("---")
-                            st.info("💡 The policy appears complete but automatic detection didn't trigger. You can manually generate the Word document below.")
-                            
-                            if st.button("📄 Generate Word Document", use_container_width=True, type="primary"):
-                                try:
-                                    word_buffer = generate_policy_word_doc(policy_response)
-                                    st.download_button(
-                                        label="⬇️ Download Your Policy Document",
-                                        data=word_buffer.getvalue(),
-                                        file_name=f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                        use_container_width=True,
-                                        type="primary"
-                                    )
-                                    st.success("✅ Word document ready for download!")
-                                except Exception as e:
-                                    st.error(f"❌ Error generating Word document: {str(e)}")
+                            # ✅ ONLY show manual override if questionnaire is actually complete
+                            # AND this is policy content (not just Q&A)
+                            if st.session_state.questionnaire_complete and len(policy_response) > 1000:
+                                st.markdown("---")
+                                st.info("💡 The policy appears complete but automatic detection didn't trigger. You can manually generate the Word document below.")
+                                
+                                if st.button("📄 Generate Word Document", use_container_width=True, type="primary"):
+                                    try:
+                                        word_buffer = generate_policy_word_doc(policy_response)
+                                        st.download_button(
+                                            label="⬇️ Download Your Policy Document",
+                                            data=word_buffer.getvalue(),
+                                            file_name=f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+                                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                            use_container_width=True,
+                                            type="primary"
+                                        )
+                                        st.success("✅ Word document ready for download!")
+                                    except Exception as e:
+                                        st.error(f"❌ Error generating Word document: {str(e)}")
 
                         # Add policy to messages
                         st.session_state.messages.append({"role": "assistant", "content": policy_response})
