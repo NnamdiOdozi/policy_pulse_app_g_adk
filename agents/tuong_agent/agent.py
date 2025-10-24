@@ -104,7 +104,7 @@ critic_agent_in_loop = LlmAgent(
     IF you identify 1-2 *clear and actionable* ways the document could be improved to better capture the topic or enhance reader engagement (e.g., "Needs a stronger opening sentence", "Clarify the character's goal"):
     Provide these specific suggestions concisely. Output *only* the critique text.
 
-    ELSE IF the document is coherent, addresses the topic adequately for its length, and has no glaring errors or obvious omissions:
+    ELSE IF the document is perfectly coherent, addresses the topic adequately for its length, and has no glaring errors or obvious omissions:
     Respond *exactly* with the phrase "{COMPLETION_PHRASE}" and nothing else. It doesn't need to be perfect, just functionally complete for this stage. Avoid suggesting purely subjective stylistic preferences if the core is sound.
 
     Do not add explanations. Output only the critique OR the exact completion phrase.
