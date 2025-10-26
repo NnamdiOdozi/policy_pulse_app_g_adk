@@ -4,6 +4,26 @@ import sys
 import os
 import json
 from datetime import datetime
+import logging
+
+# ===== SUPPRESS VERBOSE LOGGING =====
+# Suppress ADK and Google logging
+logging.getLogger('google.adk').setLevel(logging.WARNING)
+logging.getLogger('google.genai').setLevel(logging.WARNING)
+logging.getLogger('google.cloud').setLevel(logging.WARNING)
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+
+# Only show errors for most loggers
+logging.basicConfig(
+    level=logging.ERROR,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
+
+# Keep your own logging at INFO level
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 from dotenv import load_dotenv
 load_dotenv(override=True)  # This must happen FIRST
@@ -521,6 +541,82 @@ def chat_interface():
                         st.markdown("---")
                         st.markdown(policy_response)
                         
+                        # ========== FORCED DEBUG - ALWAYS RUNS ==========
+                        st.error("🔴 DEBUG: This line ALWAYS shows if code reaches here!")
+                        st.write(f"Policy response type: {type(policy_response)}")
+                        st.write(f"Policy response length: {len(policy_response) if isinstance(policy_response, str) else 'NOT A STRING'}")
+                        
+                        # FORCE download button - no conditions
+                        st.markdown("---")
+                        st.markdown("### 📄 FORCED DOWNLOAD BUTTON")
+                        
+                        try:
+                            word_buffer = generate_policy_word_doc(policy_response)
+                            st.success(f"✅ Word doc created: {len(word_buffer.getvalue())} bytes")
+                            
+                            st.download_button(
+                                label="📥 DOWNLOAD NOW",
+                                data=word_buffer.getvalue(),
+                                file_name=f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                use_container_width=True,
+                                type="primary"
+                            )
+                        except Exception as e:
+                            st.error(f"❌ Word generation failed: {e}")
+                            import traceback
+                            st.code(traceback.format_exc())
+                        
+                        st.error("🔴 DEBUG: End of forced section")
+                        # ========== END FORCED DEBUG ==========
+                        
+                        # ========== DEBUG SECTION START ==========
+                        st.markdown("---")
+                        st.markdown("### 🔍 DEBUG INFORMATION")
+                        
+                        st.write(f"**1. Policy Response Length:** {len(policy_response)} characters")
+                        st.write(f"**2. First 200 chars:** {policy_response[:200]}...")
+                        
+                        # Test detection function
+                        st.write(f"**3. Running detect_complete_policy_document()...**")
+                        is_complete = detect_complete_policy_document(policy_response)
+                        st.write(f"**4. Detection Result:** {is_complete}")
+                        
+                        # Check session state
+                        st.write(f"**5. Session State:**")
+                        st.write(f"   - in_questionnaire: {st.session_state.in_questionnaire}")
+                        st.write(f"   - questionnaire_complete: {st.session_state.questionnaire_complete}")
+                        
+                        # Try to generate Word doc
+                        st.write(f"**6. Attempting Word Document Generation...**")
+                        try:
+                            word_buffer = generate_policy_word_doc(policy_response)
+                            buffer_size = len(word_buffer.getvalue())
+                            st.write(f"   ✅ **SUCCESS!** Word doc created: {buffer_size} bytes")
+                            
+                            # Show the download button
+                            st.markdown("---")
+                            st.markdown("### 📄 Download Your Policy")
+                            col1, col2, col3 = st.columns([1, 2, 1])
+                            with col2:
+                                st.download_button(
+                                    label="📥 Download as Word Document",
+                                    data=word_buffer.getvalue(),
+                                    file_name=f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    use_container_width=True,
+                                    type="primary"
+                                )
+                            
+                        except Exception as e:
+                            st.write(f"   ❌ **FAILED!** Error: {e}")
+                            st.write("**Full traceback:**")
+                            import traceback
+                            st.code(traceback.format_exc())
+                        
+                        st.markdown("---")
+                        # ========== DEBUG SECTION END ==========
+                        
                         # Check if it's a complete policy
                         if detect_complete_policy_document(policy_response):
                             st.markdown("---")
@@ -578,7 +674,11 @@ def chat_interface():
                     response = asyncio.run(get_agent_response(prompt))
                     
                     # Check if this is a complete policy (from non-questionnaire generation)
-                    is_complete_policy = detect_complete_policy_document(response)
+                    # BUT: Don't show download button if we just started questionnaire
+                    is_complete_policy = (
+                        detect_complete_policy_document(response) 
+                        and not st.session_state.in_questionnaire  # ← ADD THIS CHECK
+                    )
                     
                     if is_complete_policy:
                         st.markdown(response)
