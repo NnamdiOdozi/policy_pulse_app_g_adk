@@ -317,33 +317,29 @@ def check_policy_request(user_input):
     
     return has_policy_keyword and has_action_keyword
 
-def should_generate_policy(response):
-    """Check if the questionnaire is complete and should trigger policy generation"""
-    
-    # Must be in questionnaire mode
+def should_generate_policy(response: str) -> bool:
+    # Only evaluate completion after the user has answered the final step
     if not st.session_state.in_questionnaire:
         return False
-    
-    # Ensure response is a string
     if not isinstance(response, str):
         return False
-    
-    # Check if questionnaire appears complete based on response content
-    completion_indicators = [
-        "no i don't have any existing policies",
-        "do you have any existing policies", 
-        "upload for reference or refinement",
-        "existing policies or documents to upload"
-    ]
-    
-    # Convert response to lowercase once
-    response_lower = response.lower()
-    
-    # If response indicates final question was asked/answered
-    if any(indicator in response_lower for indicator in completion_indicators):
+
+    # Prefer step-based completion
+    if st.session_state.questionnaire_step >= 4:
         st.session_state.questionnaire_complete = True
         return True
-    
+
+    # (Optional) Keep light heuristics that reflect *user answers*, not assistant questions
+    response_lower = response.lower()
+    user_done_hints = [
+        "no, we don't have existing policies",    # phrased as an *answer*
+        "that's all the context",
+        "go ahead and generate",
+    ]
+    if any(h in response_lower for h in user_done_hints):
+        st.session_state.questionnaire_complete = True
+        return True
+
     return False
 
 async def generate_and_send_template():
@@ -525,7 +521,10 @@ def chat_interface():
                 # Check if questionnaire is complete and should generate policy
                 if st.session_state.in_questionnaire:
                     response = asyncio.run(get_agent_response(prompt))
-                    
+                    st.caption(f"in_questionnaire={st.session_state.in_questionnaire} | "
+                    f"step={st.session_state.questionnaire_step} | "
+                    f"complete={st.session_state.questionnaire_complete}")
+
                     # Check if questionnaire is now complete
                     if should_generate_policy(response):
                         st.markdown(response)  # Show final questionnaire response
@@ -542,32 +541,32 @@ def chat_interface():
                         st.markdown(policy_response)
                         
                         # ========== FORCED DEBUG - ALWAYS RUNS ==========
-                        st.error("🔴 DEBUG: This line ALWAYS shows if code reaches here!")
-                        st.write(f"Policy response type: {type(policy_response)}")
-                        st.write(f"Policy response length: {len(policy_response) if isinstance(policy_response, str) else 'NOT A STRING'}")
+                        # st.error("🔴 DEBUG: This line ALWAYS shows if code reaches here!")
+                        # st.write(f"Policy response type: {type(policy_response)}")
+                        # st.write(f"Policy response length: {len(policy_response) if isinstance(policy_response, str) else 'NOT A STRING'}")
                         
-                        # FORCE download button - no conditions
-                        st.markdown("---")
-                        st.markdown("### 📄 FORCED DOWNLOAD BUTTON")
+                        # # FORCE download button - no conditions
+                        # st.markdown("---")
+                        # st.markdown("### 📄 FORCED DOWNLOAD BUTTON")
                         
-                        try:
-                            word_buffer = generate_policy_word_doc(policy_response)
-                            st.success(f"✅ Word doc created: {len(word_buffer.getvalue())} bytes")
+                        # try:
+                        #     word_buffer = generate_policy_word_doc(policy_response)
+                        #     st.success(f"✅ Word doc created: {len(word_buffer.getvalue())} bytes")
                             
-                            st.download_button(
-                                label="📥 DOWNLOAD NOW",
-                                data=word_buffer.getvalue(),
-                                file_name=f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                use_container_width=True,
-                                type="primary"
-                            )
-                        except Exception as e:
-                            st.error(f"❌ Word generation failed: {e}")
-                            import traceback
-                            st.code(traceback.format_exc())
+                        #     st.download_button(
+                        #         label="📥 DOWNLOAD NOW",
+                        #         data=word_buffer.getvalue(),
+                        #         file_name=f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+                        #         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        #         use_container_width=True,
+                        #         type="primary"
+                        #     )
+                        # except Exception as e:
+                        #     st.error(f"❌ Word generation failed: {e}")
+                        #     import traceback
+                        #     st.code(traceback.format_exc())
                         
-                        st.error("🔴 DEBUG: End of forced section")
+                        # st.error("🔴 DEBUG: End of forced section")
                         # ========== END FORCED DEBUG ==========
                         
                         # ========== DEBUG SECTION START ==========
@@ -699,25 +698,7 @@ def chat_interface():
                             st.error(f"Error generating Word document: {str(e)}")
                     else:
                         st.markdown(response)
-                        # ✅ ADD THIS SECTION - Manual override when detection fails
-                        st.markdown("---")
-                        st.info("💡 The policy appears complete but automatic detection didn't trigger. You can manually generate the Word document below.")
                         
-                        if st.button("📄 Generate Word Document", use_container_width=True, type="primary"):
-                            try:
-                                word_buffer = generate_policy_word_doc(response)
-                                st.download_button(
-                                    label="⬇️ Download Your Policy Document",
-                                    data=word_buffer.getvalue(),
-                                    file_name=f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
-                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                    use_container_width=True,
-                                    type="primary"
-                                )
-                                st.success("✅ Word document ready for download!")
-                            except Exception as e:
-                                st.error(f"❌ Error generating Word document: {str(e)}")
-
                     st.session_state.messages.append({"role": "assistant", "content": response})
         
         # Auto-save conversation
