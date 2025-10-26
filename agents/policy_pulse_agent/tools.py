@@ -519,8 +519,7 @@ def _cache_key(query: str, collection: str) -> str:
     return hashlib.md5(combined.encode()).hexdigest()[:16]
 
 def _retrieve_context_zilliz(query: str, 
-                     max_chunks: int = 3, 
-                     collection_name: Optional[str] = None) -> Dict[str, Any]:
+                     max_chunks: int = 3) -> Dict[str, Any]: # i will reinstate the collection_name param later on so that we can deal with multiple collections    
     """
     Retrieve relevant document chunks using hybrid search with semantic fallback.
     
@@ -534,7 +533,7 @@ def _retrieve_context_zilliz(query: str,
     Args:
         query: Search query text (e.g., "What are UK compliance requirements for employers regarding miscarriage")
         max_chunks: Maximum number of chunks to return (default: 5)
-        collection_name: Optional collection name override
+        
     
     Returns:
         Dictionary containing:
@@ -559,8 +558,8 @@ def _retrieve_context_zilliz(query: str,
     """
     
     # Set default collection name
-    collection = collection_name or os.getenv("ZILLIZ_COLLECTION_NAME")
-    
+    # collection = collection_name or os.getenv("ZILLIZ_COLLECTION_NAME") #for when I reinstate collection_name param   
+    collection = os.getenv("ZILLIZ_COLLECTION_NAME")
     # Check cache first
     cache_key = _cache_key(query, collection)
     if cache_key in search_cache:

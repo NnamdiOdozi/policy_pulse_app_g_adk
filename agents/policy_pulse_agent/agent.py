@@ -27,7 +27,7 @@ load_dotenv()  # Load environment variables first (DATABASE_URL, API keys, etc.)
 
 import logging
 # Configure detailed logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 # === OBSERVABILITY SETUP ===

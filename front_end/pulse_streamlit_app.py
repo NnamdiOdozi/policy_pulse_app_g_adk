@@ -1,4 +1,6 @@
 import streamlit as st
+
+
 import asyncio
 import sys
 import os
@@ -527,7 +529,18 @@ def chat_interface():
 
                     # Check if questionnaire is now complete
                     if should_generate_policy(response):
-                        st.markdown(response)  # Show final questionnaire response
+                        # Convert single newlines in Sources section to double newlines for Streamlit
+                        if "Sources:" in response:
+                            parts = response.split("Sources:", 1)
+                            if len(parts) == 2:
+                                main_content = parts[0]
+                                sources_section = parts[1]
+                                # Replace [DOC X] patterns with newline + [DOC X] for better formatting
+                                import re
+                                sources_section = re.sub(r'(\[DOC \d+\])', r'\n\n\1', sources_section)
+                                response = main_content + "Sources:" + sources_section
+                                
+                        st.markdown(response)
                         
                         # Add to messages
                         st.session_state.messages.append({"role": "assistant", "content": response})

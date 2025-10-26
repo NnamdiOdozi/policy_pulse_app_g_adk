@@ -76,7 +76,7 @@ class BaseConfig:
 
     # Embedding and Vector DB Indexing
     ZILLIZ_CLOUD_URI="https://in03-768dd5416cd6745.serverless.aws-eu-central-1.cloud.zilliz.com"
-    ZILLIZ_COLLECTION_NAME = "docs_voyage_3_large"
+    ZILLIZ_COLLECTION_NAME = "WAE_docs_voyage_3_large"
 
     # Validation
     @classmethod
