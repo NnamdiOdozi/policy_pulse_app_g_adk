@@ -8,6 +8,43 @@ import json
 from datetime import datetime
 import logging
 
+import re
+
+def format_sources_block(text: str) -> str:
+    """Format sources section with proper markdown bullets"""
+    if not isinstance(text, str) or "Sources:" not in text:
+        return text
+    
+    main, tail = text.split("Sources:", 1)
+    
+    # Split on [DOC N] tags, keep non-empty parts
+    parts = re.split(r'\[DOC\s*\d+\]|\n+', tail, flags=re.IGNORECASE)
+    items = [re.sub(r'\s+', ' ', p).strip(" -•") for p in parts if p and p.strip()]
+    
+    if not items:
+        return text
+    
+    bullets = "\n".join(f"- {it}" for it in items)
+    return f"{main.rstrip()}\n\n**Sources**\n\n{bullets}\n"
+
+#===== FIX ASYNCIO EVENT LOOP (PREVENTS SHADOW RESPONSES) =====
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+if "ASYNC_LOOP" not in st.session_state:
+    st.session_state.ASYNC_LOOP = asyncio.new_event_loop()
+    asyncio.set_event_loop(st.session_state.ASYNC_LOOP)
+
+def arun(coro):
+    """Run async coroutine on persistent event loop"""
+    loop = st.session_state.ASYNC_LOOP
+    if loop.is_closed():
+        st.session_state.ASYNC_LOOP = asyncio.new_event_loop()
+        loop = st.session_state.ASYNC_LOOP
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
+
 # ===== SUPPRESS VERBOSE LOGGING =====
 # Suppress ADK and Google logging
 logging.getLogger('google.adk').setLevel(logging.WARNING)
@@ -102,7 +139,13 @@ def init_session_state():
         st.session_state.messages = []
     if 'conversations' not in st.session_state:
         st.session_state.conversations = []
-    
+    if 'last_doc_bytes' not in st.session_state:
+        st.session_state.last_doc_bytes = None
+    if 'last_doc_filename' not in st.session_state:
+        st.session_state.last_doc_filename = None
+    if 'show_download' not in st.session_state:
+        st.session_state.show_download = False
+
     # NEW SESSION STATE VARIABLES - Add these for enhanced functionality
     if 'template_manager' not in st.session_state:
         st.session_state.template_manager = PolicyTemplateManager()
@@ -177,6 +220,9 @@ def start_new_conversation():
     st.session_state.uploaded_docs = []
     st.session_state.questionnaire_step = 0
     st.session_state.questionnaire_complete = False
+    # Clear any previous document
+    st.session_state.last_doc_bytes = None
+    st.session_state.last_doc_filename = None
     st.rerun()
 
 def load_conversation(session_id: str):
@@ -212,7 +258,9 @@ def load_conversation(session_id: str):
     st.session_state.uploaded_docs = []
     st.session_state.questionnaire_step = 0
     st.session_state.questionnaire_complete = False
-    
+    # Clear document from previous conversation
+    st.session_state.last_doc_bytes = None
+    st.session_state.last_doc_filename = None
     st.rerun()
 
 async def get_agent_response(user_message):
@@ -424,6 +472,27 @@ def chat_interface():
     """Main chat interface"""
     st.title("🏥 Policy Pulse Agent")
     
+    # DEBUG: Check document state
+    st.sidebar.markdown("### 🔍 DEBUG")
+    st.sidebar.write(f"doc exists: {st.session_state.last_doc_bytes is not None}")
+    if st.session_state.last_doc_bytes:
+        st.sidebar.write(f"doc size: {len(st.session_state.last_doc_bytes)} bytes")
+
+    # Always show download button if a document exists
+    if st.session_state.last_doc_bytes:
+        st.markdown("### 📄 Generated Policy Document")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.download_button(
+                label="📥 Download Policy as Word Document",
+                data=st.session_state.last_doc_bytes,
+                file_name=st.session_state.last_doc_filename,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+                type="primary"
+            )
+        st.markdown("---")
+
     # Sidebar for conversations
     with st.sidebar:
         st.subheader(f"Welcome, {st.session_state.username}!")
@@ -522,7 +591,7 @@ def chat_interface():
             with st.spinner("Thinking..."):
                 # Check if questionnaire is complete and should generate policy
                 if st.session_state.in_questionnaire:
-                    response = asyncio.run(get_agent_response(prompt))
+                    response = arun(get_agent_response(prompt))
                     st.caption(f"in_questionnaire={st.session_state.in_questionnaire} | "
                     f"step={st.session_state.questionnaire_step} | "
                     f"complete={st.session_state.questionnaire_complete}")
@@ -551,7 +620,17 @@ def chat_interface():
                         
                         # Display policy and download button
                         st.markdown("---")
+                        policy_response = format_sources_block(policy_response)
                         st.markdown(policy_response)
+                        
+                        if not st.session_state.last_doc_bytes:
+                            # Store document bytes in session state for persistence
+                            try:
+                                word_buffer = generate_policy_word_doc(policy_response)
+                                st.session_state.last_doc_bytes = word_buffer.getvalue()
+                                st.session_state.last_doc_filename = f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                            except Exception as e:
+                                st.error(f"❌ Error generating Word document: {str(e)}")
                         
                         # ========== FORCED DEBUG - ALWAYS RUNS ==========
                         # st.error("🔴 DEBUG: This line ALWAYS shows if code reaches here!")
@@ -679,11 +758,12 @@ def chat_interface():
                         st.session_state.questionnaire_complete = False
                     else:
                         # Regular questionnaire response
+                        response = format_sources_block(response)
                         st.markdown(response)
                         st.session_state.messages.append({"role": "assistant", "content": response})
                 else:
                     # Not in questionnaire - regular response
-                    response = asyncio.run(get_agent_response(prompt))
+                    response = arun(get_agent_response(prompt))
                     
                     # Check if this is a complete policy (from non-questionnaire generation)
                     # BUT: Don't show download button if we just started questionnaire
@@ -698,18 +778,23 @@ def chat_interface():
                         st.markdown("---")
                         try:
                             word_buffer = generate_policy_word_doc(response)
+                            # Store in session state for persistence
+                            st.session_state.last_doc_bytes = word_buffer.getvalue()
+                            st.session_state.last_doc_filename = f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+
                             col1, col2, col3 = st.columns([1, 2, 1])
                             with col2:
                                 st.download_button(
                                     label="📄 Download Policy as Word Document",
-                                    data=word_buffer.getvalue(),
-                                    file_name=f"policy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+                                    data=st.session_state.last_doc_bytes,
+                                    file_name=st.session_state.last_doc_filename,
                                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                     use_container_width=True
                                 )
                         except Exception as e:
                             st.error(f"Error generating Word document: {str(e)}")
                     else:
+                        response = format_sources_block(response)
                         st.markdown(response)
                         
                     st.session_state.messages.append({"role": "assistant", "content": response})

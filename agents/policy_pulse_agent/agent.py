@@ -27,8 +27,12 @@ load_dotenv()  # Load environment variables first (DATABASE_URL, API keys, etc.)
 
 import logging
 # Configure detailed logging
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Suppress AgentOps verbose logging
+logging.getLogger('agentops').setLevel(logging.ERROR)
+
 
 # === OBSERVABILITY SETUP ===
 # AgentOps provides monitoring/tracing for AI agent behavior in production
@@ -37,7 +41,9 @@ import agentops
 # Initialize AgentOps before defining agents
 agentops.init(
     api_key=os.getenv("AGENTOPS_API_KEY"),
-    trace_name="policy-pulse-debug"
+    trace_name="policy-pulse-debug",
+    auto_start_session=False,  # Disable problematic auto-instrumentation
+    skip_auto_end_session=True
 )
 
 # === GOOGLE ADK IMPORTS ===
