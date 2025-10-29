@@ -30,10 +30,10 @@ ZILLIZ_CLOUD_URI = os.environ.get("ZILLIZ_CLOUD_URI", "https://in03-768dd5416cd6
 ZILLIZ_CLOUD_TOKEN = os.environ.get("ZILLIZ_API_KEY", "your-zilliz-token-here")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "your-openai-api-key-here")  # For generating summaries
 BATCH_SIZE = 100  # Adjust based on your data and API limits
-COLLECTION_NAME = "WAE_docs_voyage_3_large"
+COLLECTION_NAME = "WAE_2_docs_voyage_3_large"
 EMBEDDING_DIM = 1024  # Voyage 3 Large dimension
 EMBEDDING_MODEL_NAME = "voyage-3-large"
-DOCS_DIRECTORY = "Policy Pulse + AVE collab"  # Change to your actual directory path Policy Pulse + AVE collab
+DOCS_DIRECTORY = "Temp_docs_list"  # Change to your actual directory path "Policy Pulse + AVE collab"
 
 
 
@@ -503,6 +503,42 @@ from tqdm import tqdm
 import voyageai
 from pymilvus import MilvusClient, DataType
 
+"""
+DUAL TEXT FIELD ARCHITECTURE
+
+This module uses two text fields with distinct purposes:
+
+1. TEXT FIELD (Display-Only)
+   - Purpose: User-facing content
+   - Content: Clean chunk text without metadata clutter
+   - Used for: UI display, citations, debugging
+   - Maintained: Updated when metadata changes
+   - NOT used for: Search operations, embeddings
+
+2. ENRICHED_TEXT FIELD (Search-Only)
+   - Purpose: Search operations and LLM context
+   - Content: Chunk text + metadata (summary, context, keywords, etc.)
+   - Used for:
+     * Vector embedding generation (semantic search)
+     * TEXT_MATCH keyword search (hybrid search)
+     * LLM context when generating answers
+   - Maintained: Created at indexing time, NOT updated with metadata changes
+   - NOT used for: Direct user display
+
+SEARCH CONSISTENCY:
+Both semantic search (vector) and keyword search (TEXT_MATCH) operate on the
+same enriched_text content. This ensures that:
+- Vector embeddings capture full context including metadata
+- Keyword matching benefits from same metadata enrichment
+- Results are consistent across search methods
+
+TRADE-OFFS:
+- Storage: ~2x text storage (enriched text is 1.5-2x larger than raw)
+- Staleness: Enriched text may contain outdated metadata if files are renamed
+  (this is intentional to avoid re-embedding)
+- Benefit: Consistent search behavior, rich LLM context, clean user display
+"""
+
 class ZillizMigrationTool:
     def __init__(self, voyage_api_key: str, zilliz_uri: str, zilliz_token: str, openai_api_key: str = None):
         """
@@ -513,6 +549,9 @@ class ZillizMigrationTool:
             zilliz_uri: URI for Zilliz Cloud instance
             zilliz_token: Token for Zilliz Cloud authentication
             openai_api_key: Optional API key for OpenAI (for summarization)
+
+
+
         """
         self.voyage_client = voyageai.Client(api_key=voyage_api_key)
         self.zilliz_client = MilvusClient(
@@ -580,7 +619,23 @@ class ZillizMigrationTool:
         schema.add_field(
             field_name="text",
             datatype=DataType.VARCHAR,
-            max_length=65535,
+            max_length=5000,
+            enable_analyzer=True,
+            enable_match=True,
+            analyzer_params={"type": "english"},
+        )
+        # ENRICHED_TEXT: Enriched text used for all search operations
+        # Contains raw text PLUS metadata context (summary, keywords, etc.)
+        # Used for: 
+        #   1. Vector embedding generation (semantic search)
+        #   2. Inverted index TEXT_MATCH (keyword/hybrid search)
+        #   3. LLM context when answering queries
+        # NOT updated when metadata changes - accepts staleness as trade-off
+        # This creates consistency: same content used for both vector and keyword search
+        schema.add_field(
+            field_name="enriched_text",
+            datatype=DataType.VARCHAR,
+            max_length=10000,
             enable_analyzer=True,
             enable_match=True,
             analyzer_params={"type": "english"},
@@ -648,6 +703,7 @@ class ZillizMigrationTool:
 
         # Inverted indexes for TEXT_MATCH-capable fields
         index_params.add_index(field_name="text", index_type="INVERTED", index_name="text_inverted")
+        index_params.add_index(field_name="enriched_text", index_type="INVERTED", index_name="enriched_text_inverted")
         index_params.add_index(field_name="chunk_summary", index_type="INVERTED", index_name="chunk_summary_inverted")
         index_params.add_index(field_name="section_title", index_type="INVERTED", index_name="section_title_inverted")
         index_params.add_index(field_name="keywords_text", index_type="INVERTED", index_name="keywords_text_inverted")
@@ -824,14 +880,27 @@ Source: {chunk.get('filename', '')}"""
         
         return chunks
     
-    def _prepare_chunk_data(self, chunk, embedding):
-        """Prepare chunk data with ID coercion and field validation."""
+    def _prepare_chunk_data(self, chunk, embedding, enriched_text):
+        """
+        Prepare chunk data for Zilliz insertion with dual text field, with ID coercion and field validation.
+        
+        Returns:
+            chunk_data dict with:
+            - text: Raw chunk text (display only)
+            - enriched_text: Enriched version (search + LLM context)
+            - vector: Embedding from enriched_text
+            
+        Note: The embedding is generated from enriched_text, ensuring 
+        consistency between vector and keyword search operations.
+        """
+
         # Create flattened keywords text for TEXT_MATCH
         keywords_text = ", ".join(chunk.get("semantic_keywords", []))
         
         chunk_data = {
             "id": chunk["id"],  # Keep as string now that we have VARCHAR primary key
             "text": chunk["text"],
+            "enriched_text": enriched_text,
             "filename": chunk["filename"],
             "file_type": chunk.get("file_type", ""),
             "file_path": chunk.get("file_path", ""),
@@ -869,7 +938,9 @@ Source: {chunk.get('filename', '')}"""
         print(f"Enhanced {len(chunks)} chunks with metadata")
         print(f"Average enrichment: {sum(len(et) for et in enriched_texts) // len(enriched_texts)} chars")
         
-        # Generate embeddings on enriched text
+        # Generate embeddings on enriched text (not raw text)
+        # This ensures vector search operates on the same enriched content
+        # that keyword search will use via inverted index
         embeddings = self.generate_embeddings(enriched_texts, show_progress)
         
         # Log chunk processing details
@@ -879,18 +950,21 @@ Source: {chunk.get('filename', '')}"""
             
         print(f"Logged {len(chunks)} chunks for this run")
         
-        # Insert in batches
-        batches = [(chunks[i:i + BATCH_SIZE], embeddings[i:i + BATCH_SIZE]) 
-                  for i in range(0, len(chunks), BATCH_SIZE)]
+        # Batch all three lists together for insertion
+        # Each chunk needs: raw text (display), enriched text (search), embedding (vector)
+        batches = [(chunks[i:i + BATCH_SIZE], 
+                    embeddings[i:i + BATCH_SIZE],
+                    enriched_texts[i:i + BATCH_SIZE]) 
+                   for i in range(0, len(chunks), BATCH_SIZE)]
         
         if show_progress:
             batches = tqdm(batches, desc="Inserting chunks")
         
-        for batch_chunks, batch_embeddings in batches:
+        for batch_chunks, batch_embeddings, batch_enriched_texts in batches:
             try:
                 insert_data = []
                 for i, chunk in enumerate(batch_chunks):
-                    chunk_data = self._prepare_chunk_data(chunk, batch_embeddings[i])
+                    chunk_data = self._prepare_chunk_data(chunk, batch_embeddings[i], batch_enriched_texts[i])
                     insert_data.append(chunk_data)
                 
                 # Insert the batch - I changed this to upsert rather than insert so that new chunks with same id would overwrite older chunks
@@ -949,6 +1023,25 @@ Source: {chunk.get('filename', '')}"""
         """
         Update filename and file_path in all chunks when file is renamed.
         Used when content hasn't changed (same hash).
+
+        Does NOT update:
+        - text: Kept as original chunk text for display
+        - enriched_text: Intentionally left with original metadata
+        - vector: Represents the original enriched content
+        
+        Rationale: The vector embedding was generated from enriched_text containing
+        the original filename. Changing enriched_text would create inconsistency with
+        the embedding. Re-embedding would be expensive and typically unnecessary since
+        the actual content hasn't changed.
+        
+        This means enriched_text may contain stale metadata (e.g., old filename), but
+        this is acceptable because:
+        1. Semantic search (vector) still works correctly on content
+        2. Keyword searches on metadata use structured fields, not enriched_text
+        3. Raw text field has correct metadata for display
+        4. Metadata staleness doesn't affect the core meaning of the content
+
+
         """
         try:
             # Escape backslashes for Windows paths
@@ -1026,7 +1119,14 @@ Source: {chunk.get('filename', '')}"""
     def search_chunks(self, collection_name: str, query: str, limit: int = 5, 
                  metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Fixed version of search_chunks that handles metadata field issues.
+        Semantic search using vector embeddings generated from enriched text.
+        
+        Returns both text fields:
+        - text: Clean chunk for user display
+        - enriched_text: Full context for LLM reasoning
+        
+        The vector search operates on embeddings generated from enriched_text,
+        ensuring semantic similarity includes metadata context.
         """
         try:
             # Generate embedding for the query
@@ -1039,7 +1139,7 @@ Source: {chunk.get('filename', '')}"""
             
             # Define output fields - ensure they match your schema
             output_fields = [
-                "text", "chunk_summary", "section_title", "document_summary",
+                "text", "enriched_text", "chunk_summary", "section_title", "document_summary",
                 "filename", "file_type", "section_context", "semantic_keywords"
             ]
             
@@ -1118,7 +1218,20 @@ Source: {chunk.get('filename', '')}"""
     def hybrid_search_chunks(self, collection_name: str, query: str, limit: int = 5,
                             metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Perform hybrid search with TEXT_MATCH over multiple fields including keywords.
+        Hybrid search combining vector similarity and keyword matching on enriched content.
+        
+        Keyword matching via TEXT_MATCH searches the enriched_text field, which includes:
+        - Original chunk text
+        - Chunk summary
+        - Section context
+        - Document summary
+        - Semantic keywords
+        
+        This creates consistency: both vector and keyword search operate on the same
+        enriched content, providing complementary retrieval methods over full context.
+        
+        Note: Keywords can match metadata even if not in chunk text itself - generally
+        desirable for policy analysis where document context matters.
         """
         # Extract potential keywords from the query
         keywords = [word for word in query.split() if len(word) > 3]

@@ -43,15 +43,6 @@ def get_zilliz_client():
     """Get the cached ZillizMigrationTool instance."""
     return _get_cached_zilliz_client()
 
-# Create a cache that expires entries after 30 minutes. This is used by the Zilliz RAG retrieval tool
-search_cache = TTLCache(maxsize=50, ttl=1800)  # 50 queries, 30min expiry
-
-def _cache_key(query: str, collection: str) -> str:
-    """Generate cache key for search results."""
-    combined = f"{query}:{collection}"
-    return hashlib.md5(combined.encode()).hexdigest()[:16]
-
-
 # ========== CORRECT ADK FUNCTION TOOLS ==========
 # Following ADK documentation: functions should be standalone, serializable
 
@@ -433,83 +424,6 @@ def search_with_serpapi(query: str, max_results: int = 5) -> Dict[str, Any]:
     except Exception as e:
         return {"error": f"SerpAPI search failed: {str(e)}"}
 
-
-def _retrieve_context(query: str, max_chunks: int = 5) -> Dict[str, Any]:
-    """
-    Retrieve relevant context from the Policy Pulse knowledge base using RAG.
-
-    Note that the RAG database may not have the most up to dat information
-    
-    This function searches the internal vector database for relevant policy 
-    documents, regulatory guidance, and training content to provide context 
-    for AI responses.
-    
-    Args:
-        query (str): The search query for retrieving relevant context
-        max_chunks (int): Maximum number of document chunks to retrieve (default: 5)
-        
-    Returns:
-        Dict[str, Any]: Retrieved context chunks with metadata and citations
-    """
-    try:
-        # Use the existing retrieve_relevant_chunks function
-        chunks = retrieve_relevant_chunks(
-            text=query,
-            index_name="policypulse",
-            api_key=os.environ.get("PINECONE_API_KEY"),
-            top_k=min(max_chunks, 5),
-        )
-        
-        if not chunks:
-            return {
-                "provider": "PolicyPulse RAG",
-                "query": query,
-                "chunks": [],
-                "total_chunks": 0,
-                "message": "No relevant context found in knowledge base"
-            }
-        
-        # Format chunks for consistency with search tools
-        formatted_chunks = []
-        for i, chunk in enumerate(chunks, 1):
-            # Handle different chunk formats
-            if isinstance(chunk, dict):
-                formatted_chunks.append({
-                    "position": i,
-                    "content": chunk.get("text", chunk.get("content", "")),
-                    "source": chunk.get("source", "Unknown"),
-                    "score": chunk.get("score", None),
-                    "metadata": chunk.get("metadata", {})
-                })
-            elif isinstance(chunk, str):
-                formatted_chunks.append({
-                    "position": i,
-                    "content": chunk,
-                    "source": "PolicyPulse Knowledge Base",
-                    "score": None,
-                    "metadata": {}
-                })
-            else:
-                # Handle other formats
-                formatted_chunks.append({
-                    "position": i,
-                    "content": str(chunk),
-                    "source": "PolicyPulse Knowledge Base",
-                    "score": None,
-                    "metadata": {}
-                })
-        
-        return {
-            "provider": "PolicyPulse RAG",
-            "query": query,
-            "chunks": formatted_chunks,
-            "total_chunks": len(formatted_chunks)
-        }
-        
-    except Exception as e:
-        return {"error": f"Context retrieval failed: {str(e)}"}
-
-
 # Initialize cache at module level
 search_cache = TTLCache(maxsize=50, ttl=1800)  # 50 queries, 30min expiry
 
@@ -596,17 +510,20 @@ def _retrieve_context_zilliz(query: str,
         # Format results with rich metadata
         chunks = []
         for i, result in enumerate(results, 1):
+            # I've commented a lot of the chunk fields below because the enriched_text field now contains the original text plus all of the other fields.
+            # for the User display we will want to show the raw chunk text using something like user_display = result["text"][2000] pulled form theVector DB search or alternativley from another chunk store eg SQL, MongoDB et, and then the doc ref would likely be an S3 bucket blob URL
             chunk = {
                 "position": i,
-                "content": result.get("chunk_summary", "").strip(),
-                "full_text": result.get("text", "")[:2000] + "..." if len(result.get("text", "")) > 2000 else result.get("text", ""),
+                #"content": result.get("chunk_summary", "").strip(),
+                "enriched_text": result.get("enriched_text", "")[:5000] + "..." if len(result.get("enriched_text", "")) > 5000 else result.get("enriched_text", ""),
+                "text": result.get("text", "")[:5000] + "..." if len(result.get("text", "")) > 5000 else result.get("text", ""),
                 "source": result.get("filename", ""),
                 "score": result.get("score", 0.0),
-                "section_title": result.get("section_title", ""),
-                "section_context": result.get("section_context", ""),
-                "document_summary": result.get("document_summary", ""),
-                "file_type": result.get("file_type", ""),
-                "semantic_keywords": result.get("semantic_keywords", [])[:5]  # Top 5 keywords only
+                #"section_title": result.get("section_title", ""),
+                #"section_context": result.get("section_context", ""),
+                #"document_summary": result.get("document_summary", ""),
+                #"file_type": result.get("file_type", ""),
+                #"semantic_keywords": result.get("semantic_keywords", [])[:5]  # Top 5 keywords only
             }
             chunks.append(chunk)
         
