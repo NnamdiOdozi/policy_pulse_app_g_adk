@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Suppress AgentOps verbose logging
-logging.getLogger('agentops').setLevel(logging.ERROR)
+logging.getLogger('agentops').setLevel(logging.DEBUG)
 
 
 # === OBSERVABILITY SETUP ===
@@ -42,8 +42,8 @@ import agentops
 agentops.init(
     api_key=os.getenv("AGENTOPS_API_KEY"),
     trace_name="policy-pulse-debug",
-    auto_start_session=False,  # Disable problematic auto-instrumentation
-    skip_auto_end_session=True
+    #auto_start_session=False,  # Disable problematic auto-instrumentation
+    #skip_auto_end_session=True
 )
 
 # === GOOGLE ADK IMPORTS ===

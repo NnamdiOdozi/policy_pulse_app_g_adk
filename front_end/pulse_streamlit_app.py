@@ -47,7 +47,7 @@ def arun(coro):
 
 # ===== SUPPRESS VERBOSE LOGGING =====
 # Suppress ADK and Google logging
-logging.getLogger('google.adk').setLevel(logging.WARNING)
+logging.getLogger('google.adk').setLevel(logging.DEBUG)
 logging.getLogger('google.genai').setLevel(logging.WARNING)
 logging.getLogger('google.cloud').setLevel(logging.WARNING)
 logging.getLogger('httpx').setLevel(logging.WARNING)
@@ -55,7 +55,7 @@ logging.getLogger('httpcore').setLevel(logging.WARNING)
 
 # Only show errors for most loggers
 logging.basicConfig(
-    level=logging.ERROR,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     stream=sys.stdout
 )

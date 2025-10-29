@@ -24,7 +24,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-
+model_gemini="gemini-2.5-flash"
 model=LiteLlm(
         model="openrouter/openai/o4-mini",
         api_key=os.environ.get("OPENROUTER_API_KEY"),
@@ -150,7 +150,7 @@ INSTRUCTION = (
 
 ReportWriting_OpenAI_agent = Agent(
     name="ReportWriting_OpenAI_agent",
-    model=model,
+    model=model_gemini,
     description=(
         "Agent which long-form and research type writing in order to draft reports, policies etc."
     ),

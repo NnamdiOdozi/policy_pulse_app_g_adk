@@ -32,12 +32,13 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "your-openai-api-key-here")  #
 BATCH_SIZE = 100  # Adjust based on your data and API limits
 COLLECTION_NAME = "WAE_docs_voyage_3_large"
 EMBEDDING_DIM = 1024  # Voyage 3 Large dimension
+EMBEDDING_MODEL_NAME = "voyage-3-large"
 DOCS_DIRECTORY = "Policy Pulse + AVE collab"  # Change to your actual directory path Policy Pulse + AVE collab
+
 
 
 import hashlib
 from typing import Any, List
-
 
 
 # Now include the DocumentProcessor class
@@ -533,9 +534,9 @@ class ZillizMigrationTool:
         self.current_log_file = self.logs_dir / f"chunks_log_{timestamp}.json"
         self.log_data = {
             "script_run": {
-                "timestamp": datetime.datetime.now().isoformat(),
-                "voyage_model": "voyage-3-large",
-                "embedding_dimension": 1024
+            "timestamp": datetime.datetime.now().isoformat(),
+            "voyage_model": EMBEDDING_MODEL_NAME,
+            "embedding_dimension": EMBEDDING_DIM
             },
             "chunks": []
         }
@@ -781,7 +782,7 @@ Source: {chunk.get('filename', '')}"""
                 # Generate embeddings using Voyage 3 Large model
                 response = self.voyage_client.embed(
                     batch, 
-                    model="voyage-3-large", 
+                    model=EMBEDDING_MODEL_NAME, 
                     input_type="document",
                     output_dimension=1024
                 )
@@ -1031,7 +1032,7 @@ Source: {chunk.get('filename', '')}"""
             # Generate embedding for the query
             query_embedding = self.voyage_client.embed(
                 [query], 
-                model="voyage-3-large", 
+                model=EMBEDDING_MODEL_NAME, 
                 input_type="query",
                 output_dimension=1024
             ).embeddings[0]
