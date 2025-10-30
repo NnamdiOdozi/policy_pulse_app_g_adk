@@ -76,7 +76,7 @@ EMBEDDING_DIM = 1024
 class ZillizMigrationTool:
     def __init__(self, voyage_api_key: str, zilliz_uri: str, zilliz_token: str, openai_api_key: str = None):
         """
-        Initialize the migration tool with API keys and connection details.
+        Initialize the migration tool with API keys and connection details. It  creates an instance of the DocumentProcessor class to load docs, chunk them and enrich them
         
         Args:
             voyage_api_key: API key for Voyage AI
