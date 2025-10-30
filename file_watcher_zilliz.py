@@ -21,7 +21,7 @@ from watchdog.events import FileSystemEventHandler, FileMovedEvent
 from dotenv import load_dotenv
 
 # Import your existing Zilliz classes
-from zilliz_embedding import ZillizMigrationTool
+from Zilliz_src.zilliz_embedding import ZillizMigrationTool
 
 # Load environment variables
 load_dotenv()

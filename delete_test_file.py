@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from zilliz_embedding import ZillizMigrationTool
+from Zilliz_src.zilliz_embedding import ZillizMigrationTool
 
 load_dotenv()
 

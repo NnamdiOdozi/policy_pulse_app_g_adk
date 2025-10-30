@@ -21,7 +21,7 @@ from old_pulse.ai_agent import retrieve_relevant_chunks
 
 from cachetools import cached, TTLCache
 import hashlib
-from zilliz_embedding import ZillizMigrationTool
+from Zilliz_src.zilliz_embedding import ZillizMigrationTool
 
 # Load environment variables
 from dotenv import load_dotenv

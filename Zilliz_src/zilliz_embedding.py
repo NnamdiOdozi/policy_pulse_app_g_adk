@@ -1,16 +1,16 @@
 import os
+import sys
 import json
 import numpy as np
 import datetime
 from pathlib import Path
 import time
-from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 from tqdm import tqdm
 
 # For embeddings and vector database
 import voyageai
-from pymilvus import MilvusClient, DataType
+from pymilvus import MilvusClient, DataType, Function, FunctionType, AnnSearchRequest, RRFRanker
 
 # For document processing
 import docx
@@ -34,7 +34,15 @@ COLLECTION_NAME = "WAE_2_docs_voyage_3_large"
 EMBEDDING_DIM = 1024  # Voyage 3 Large dimension
 EMBEDDING_MODEL_NAME = "voyage-3-large"
 DOCS_DIRECTORY = "Temp_docs_list"  # Change to your actual directory path "Policy Pulse + AVE collab"
+LLM_SUMMARISER_MODEL = "gpt-3.5-turbo"  # Model for generating summaries. can switch up to gpt-4o-mini when doing evals
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
 
+# === PATH SETUP ===
+# UNUSUAL: We manipulate sys.path to allow imports from parent directories
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(current_dir, '..') 
+sys.path.insert(0, os.path.abspath(project_root))
 
 
 import hashlib
@@ -53,14 +61,14 @@ class DocumentProcessor:
             openai_api_key: API key for OpenAI (used for generating summaries)
         """
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
             length_function=len,
         )
         
         # Initialize LLM for generating summaries
         self.llm = ChatOpenAI(
-            model="gpt-4o-mini", #  i switched this up from gpt-3.5 to improve quality
+            model=LLM_SUMMARISER_MODEL,
             temperature=0.0,
             api_key=openai_api_key,
             request_timeout=120,  # Increase from default 30s to 60s to 120s
@@ -489,20 +497,6 @@ class DocumentProcessor:
         print(f"=== TOTAL RAW CHUNKS: {total_raw_chunks} ===")
         return total_raw_chunks
 
-
-import os
-import json
-import numpy as np
-import datetime
-from pathlib import Path
-import time
-from typing import List, Dict, Any, Optional, Tuple
-from tqdm import tqdm
-
-# For embeddings and vector database
-import voyageai
-from pymilvus import MilvusClient, DataType
-
 """
 DUAL TEXT FIELD ARCHITECTURE
 
@@ -539,6 +533,9 @@ TRADE-OFFS:
 - Benefit: Consistent search behavior, rich LLM context, clean user display
 """
 
+BATCH_SIZE = 100
+EMBEDDING_DIM = 1024
+
 class ZillizMigrationTool:
     def __init__(self, voyage_api_key: str, zilliz_uri: str, zilliz_token: str, openai_api_key: str = None):
         """
@@ -549,9 +546,6 @@ class ZillizMigrationTool:
             zilliz_uri: URI for Zilliz Cloud instance
             zilliz_token: Token for Zilliz Cloud authentication
             openai_api_key: Optional API key for OpenAI (for summarization)
-
-
-
         """
         self.voyage_client = voyageai.Client(api_key=voyage_api_key)
         self.zilliz_client = MilvusClient(
@@ -561,7 +555,7 @@ class ZillizMigrationTool:
         
         self.document_processor = None
         if openai_api_key:
-            from zilliz_embedding import DocumentProcessor  # Adjust import as needed
+            from Zilliz_src.zilliz_embedding import DocumentProcessor  # Adjust import as needed
             self.document_processor = DocumentProcessor(openai_api_key)
         
         # Create logs directory if it doesn't exist
@@ -641,6 +635,13 @@ class ZillizMigrationTool:
             analyzer_params={"type": "english"},
         )
 
+        # Sparse vector field for BM25 (auto-generated from enriched_text)
+        schema.add_field(
+            field_name="enriched_text_sparse",
+            datatype=DataType.SPARSE_FLOAT_VECTOR,
+            description="BM25 sparse vectors auto-generated from enriched_text"
+        )
+
         # Other metadata fields
         schema.add_field("filename", datatype=DataType.VARCHAR, max_length=256)
         schema.add_field("file_type", datatype=DataType.VARCHAR, max_length=20)
@@ -686,6 +687,15 @@ class ZillizMigrationTool:
         # Dense vector field
         schema.add_field("vector", datatype=DataType.FLOAT_VECTOR, dim=dimension)
 
+        # Define BM25 function to auto-generate sparse vectors from enriched_text
+        bm25_function = Function(
+            name="enriched_text_bm25",
+            input_field_names=["enriched_text"],  # Takes enriched_text as input
+            output_field_names=["enriched_text_sparse"],  # Outputs to sparse field
+            function_type=FunctionType.BM25,
+        )
+        schema.add_function(bm25_function)
+
         # 3) Create collection
         client.create_collection(collection_name=collection_name, schema=schema)
 
@@ -700,6 +710,15 @@ class ZillizMigrationTool:
             index_name="vector_hnsw",
             params={"M": 16, "efConstruction": 200},
         )
+
+        # BM25 sparse vector index
+        index_params.add_index(
+            field_name="enriched_text_sparse",
+            index_type="SPARSE_INVERTED_INDEX",
+            metric_type="BM25",
+            index_name="enriched_text_sparse_bm25"
+        )
+
 
         # Inverted indexes for TEXT_MATCH-capable fields
         index_params.add_index(field_name="text", index_type="INVERTED", index_name="text_inverted")
@@ -821,8 +840,7 @@ Source: {chunk.get('filename', '')}"""
         Returns:
             List of embeddings as float vectors
         """
-        BATCH_SIZE = 100
-        EMBEDDING_DIM = 1024
+        
         
         # Process in smaller batches to avoid API limits
         all_embeddings = []
@@ -1218,7 +1236,7 @@ Source: {chunk.get('filename', '')}"""
     def hybrid_search_chunks(self, collection_name: str, query: str, limit: int = 5,
                             metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Hybrid search combining vector similarity and keyword matching on enriched content.
+        Manual Hybrid search combining vector similarity and keyword matching on enriched content.
         
         Keyword matching via TEXT_MATCH searches the enriched_text field, which includes:
         - Original chunk text
@@ -1281,6 +1299,81 @@ Source: {chunk.get('filename', '')}"""
             query=query,
             limit=limit
         )
+    
+    def hybrid_search_chunks_API(self, collection_name: str, query: str, limit: int = 5,
+                                metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Hybrid search using the Zilliz hybrid search API with automatic fusion of vector and BM25 results.
+        Uses the BM25 function's sparse vectors for keyword matching.
+        """
+        # Generate query embedding using YOUR SAME METHOD
+        query_embedding = self.voyage_client.embed(
+            [query],
+            model=EMBEDDING_MODEL_NAME,
+            input_type="query"
+        ).embeddings[0]
+            
+        # Vector search request
+        search_param_vector = {
+            "data": [query_embedding],
+            "anns_field": "vector",
+            "param": {
+                "metric_type": "COSINE",
+                "params": {"ef": 256}  # HNSW search params
+            },
+            "limit": 20,
+            "expr": None
+        }
+        vector_req = AnnSearchRequest(**search_param_vector)
+        
+        # BM25 search request on sparse vectors (auto-generated from enriched_text)
+        search_param_bm25 = {
+            "data": [query],  # Pass query as text, Milvus will convert via BM25 function
+            "anns_field": "enriched_text_sparse",  # Use the sparse vector field
+            "param": {
+                "metric_type": "BM25",
+                "params": {"drop_ratio_search": 0.2}
+            },
+            "limit": 20,
+            "expr": metadata_filter
+        }
+        bm25_req = AnnSearchRequest(**search_param_bm25)
+        
+        # Hybrid search with RRF fusion
+        results = self.zilliz_client.hybrid_search(
+            collection_name=collection_name,
+            reqs=[vector_req, bm25_req],
+            ranker=RRFRanker(k=60),  
+            limit=limit,
+            output_fields=[
+                "text", "enriched_text", "chunk_summary", "section_title", 
+                "document_summary", "filename", "file_type", "section_context", 
+                "semantic_keywords"
+            ]
+        )
+        
+        # Format results to match hybrid_search_chunks return type
+        formatted_results = []
+        hits = results[0] if results else []
+        
+        for hit in hits:
+            # Access entity fields from the hit object
+            entity = hit.entity if hasattr(hit, 'entity') else hit
+            
+            formatted_results.append({
+                "text": entity.get("text", ""),
+                "enriched_text": entity.get("enriched_text", ""),
+                "chunk_summary": entity.get("chunk_summary", ""),
+                "section_title": entity.get("section_title", ""),
+                "document_summary": entity.get("document_summary", ""),
+                "filename": entity.get("filename", ""),
+                "file_type": entity.get("file_type", ""),
+                "section_context": entity.get("section_context", ""),
+                "semantic_keywords": entity.get("semantic_keywords", []),
+                "score": 1.0 - hit.distance if hasattr(hit, 'distance') else hit.get('score', 0.0)
+            })
+        
+        return formatted_results
         
 def main():
     # Initialize the migration tool with both Voyage and OpenAI API keys
@@ -1296,6 +1389,7 @@ def main():
 
     # Process all documents in the directory and insert into Zilliz
     try:
+        #chunks = {"test": "test"} #remove this line once done with testing
         chunks = migration_tool.process_directory_and_insert(
             collection_name=COLLECTION_NAME,
             directory_path=DOCS_DIRECTORY
@@ -1338,7 +1432,7 @@ def main():
                 print("---")
             
             print("\nHybrid Search Example:")
-            results = migration_tool.hybrid_search_chunks(
+            results = migration_tool.hybrid_search_chunks_API(
                 collection_name=COLLECTION_NAME,
                 query="maternity leave duration weeks",
                 limit=5
