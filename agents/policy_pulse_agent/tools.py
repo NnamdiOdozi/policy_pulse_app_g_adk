@@ -17,11 +17,9 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.join(current_dir, '..' , '..')
 sys.path.insert(0, os.path.abspath(project_root))
 
-from old_pulse.ai_agent import retrieve_relevant_chunks
-
 from cachetools import cached, TTLCache
 import hashlib
-from Zilliz_src.zilliz_embedding import ZillizMigrationTool
+from Zilliz_src.zilliz_search import ZillizSearchTool
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -31,15 +29,14 @@ from functools import lru_cache
 
 @lru_cache(maxsize=1)
 def _get_cached_zilliz_client():
-    """Create and cache a single ZillizMigrationTool instance."""
-    return ZillizMigrationTool(
+    """Create and cache a single ZillizSearchTool instance."""
+    return ZillizSearchTool(
         voyage_api_key=os.getenv("VOYAGE_API_KEY"),
         zilliz_uri=os.getenv("ZILLIZ_CLOUD_URI"),
         zilliz_token=os.getenv("ZILLIZ_API_KEY"),
-        openai_api_key=os.getenv("OPENAI_API_KEY")
     )
 
-def get_zilliz_client():
+def get_zilliz_client()
     """Get the cached ZillizMigrationTool instance."""
     return _get_cached_zilliz_client()
 
@@ -482,11 +479,11 @@ def _retrieve_context_zilliz(query: str,
         return cached_result
     
     try:
-        # Create fresh ZillizMigrationTool instance
-        migrator = get_zilliz_client()      
+        # Create fresh ZillizSearchTool instance
+        search_tool = get_zilliz_client()      
         # Try hybrid search first (TEXT_MATCH + semantic ranking)
         # This searches across text, chunk_summary, section_title, and semantic_keywords fields
-        hybrid_results = migrator.hybrid_search_chunks(
+        hybrid_results = search_tool.hybrid_search_chunks(
             collection_name=collection,
             query=query,
             limit=min(max_chunks, 3),
@@ -495,7 +492,7 @@ def _retrieve_context_zilliz(query: str,
         
         # Fallback to pure semantic search if hybrid returns no results
         if not hybrid_results:
-            semantic_results = migrator.search_chunks(
+            semantic_results = search_tool.search_chunks(
                 collection_name=collection,
                 query=query,
                 limit=min(max_chunks, 3),
