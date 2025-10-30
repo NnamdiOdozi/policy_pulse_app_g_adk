@@ -88,10 +88,10 @@ class ZillizSearchTool:
         
               
         # Create logs directory if it doesn't exist
-        self.logs_dir = Path("embedding_logs")
+        self.logs_dir = Path("search_logs")
         self.logs_dir.mkdir(exist_ok=True)
         
-        # Create single log file for this script run
+        # Create single log file for this script run and need to write to file after search is completed - this is not currently being used and I should consider removing later on. 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.current_log_file = self.logs_dir / f"chunks_log_{timestamp}.json"
         self.log_data = {

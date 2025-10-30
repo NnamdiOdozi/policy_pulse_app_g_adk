@@ -24,7 +24,7 @@ BATCH_SIZE = 100  # Adjust based on your data and API limits
 COLLECTION_NAME = "WAE_2_docs_voyage_3_large"
 EMBEDDING_DIM = 1024  # Voyage 3 Large dimension
 EMBEDDING_MODEL_NAME = "voyage-3-large"
-DOCS_DIRECTORY = "Temp_docs_list"  # Change to your actual directory path "Policy Pulse + AVE collab"
+DOCS_DIRECTORY = "Policy Pulse + AVE collab"  # Change to your actual directory path "Policy Pulse + AVE collab"
 
 # === PATH SETUP ===
 # UNUSUAL: We manipulate sys.path to allow imports from parent directories
@@ -69,9 +69,6 @@ TRADE-OFFS:
   (this is intentional to avoid re-embedding)
 - Benefit: Consistent search behavior, rich LLM context, clean user display
 """
-
-BATCH_SIZE = 100
-EMBEDDING_DIM = 1024
 
 class ZillizMigrationTool:
     def __init__(self, voyage_api_key: str, zilliz_uri: str, zilliz_token: str, openai_api_key: str = None):
