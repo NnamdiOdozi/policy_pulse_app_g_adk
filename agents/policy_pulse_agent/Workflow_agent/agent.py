@@ -26,137 +26,122 @@ SESSION_ID_BASE = "loop_exit_tool_session" # New Base Session ID
 GEMINI_MODEL = "gemini-2.0-flash"
 STATE_INITIAL_TOPIC = "initial_topic"
 
-# --- State Keys ---
-STATE_CURRENT_DOC = "current_document"
-STATE_CRITICISM = "criticism"
-# Define the exact phrase the Critic should use to signal completion
-COMPLETION_PHRASE = "No major issues found."
+STATE_USER_QUERY = "user_query"
+STATE_CURRENT_RESPONSE = "current_response"
+STATE_QUALITY_CRITIQUE = "quality_critique"
+QUALITY_APPROVED_PHRASE = "RESPONSE_APPROVED"
 
 # --- Tool Definition ---
-def exit_loop(tool_context: ToolContext):
+def exit_quality_loop(tool_context: ToolContext):
   """Call this function ONLY when the critique indicates no further changes are needed, signaling the iterative process should end."""
   print(f"  [Tool Call] exit_loop triggered by {tool_context.agent_name}")
   tool_context.actions.escalate = True
   # Return empty dict as tools should typically return JSON-serializable output
   return {}
 
-# --- Agent Definitions ---
+INSTRUCTION = (
+"You are a general purpose assistant specializing in workplace reproductive and fertility health.\n\n")
 
-# STEP 0: Topic Setting Agent (Sets the initial topic)
-topic_setter_agent = LlmAgent(
-    name="TopicSetterAgent",
-    model=GEMINI_MODEL,
-    include_contents='none',
-    instruction="""You are a Topic Generator. Generate a creative and interesting topic for a short story.
-    Choose from themes like: adventure, mystery, friendship, discovery, transformation, or challenge.
+model="gemini-2.5-flash"
+
+
+
+# Quality Critic - Reviews FAQ responses
+quality_critic = LlmAgent(
+    name="QualityCritic",
+    model="gemini-2.5-flash",
+    include_contents='default',  # Include context to understand the query
+    instruction=f"""You are a Quality Assurance Critic for Policy Pulse FAQ responses.
     
-    Output only a brief topic description (1-2 sentences) that would inspire a creative story.
-    Examples: "A young explorer finds a mysterious door in their attic", "Two strangers get stuck in an elevator during a power outage"
+    Review this response for:
+    - Accuracy and completeness
+    - Professional tone
+    - Proper citation format [DOC X]
+    - No PII or inappropriate content
+    - Clear structure and formatting
     
-    Output only the topic description, nothing else.""",
-    description="Generates an initial creative writing topic.",
-    output_key=STATE_INITIAL_TOPIC
-)
-
-# STEP 1: Initial Writer Agent (Runs ONCE at the beginning)
-initial_writer_agent = LlmAgent(
-    name="InitialWriterAgent",
-    model=GEMINI_MODEL,
-    include_contents='none',
-    # MODIFIED Instruction: Ask for a slightly more developed start
-    instruction=f"""You are a Creative Writing Assistant tasked with starting a story.
-    Write the *first draft* of a short story (aim for 2-4 sentences).
-    Base the content *only* on the topic provided below. Try to introduce a specific element (like a character, a setting detail, or a starting action) to make it engaging.
-    Topic: {{{STATE_INITIAL_TOPIC}}}
-
-    Output *only* the story/document text. Do not add introductions or explanations.
-""",
-    description="Writes the initial document draft based on the topic, aiming for some initial substance.",
-    tools=[ _retrieve_context_zilliz, search_with_exa],
-    output_key=STATE_CURRENT_DOC
+    **Response to Review:**
+    {{{STATE_CURRENT_RESPONSE}}}
     
-)
-
-# STEP 2a: Critic Agent (Inside the Refinement Loop)
-critic_agent_in_loop = LlmAgent(
-    name="CriticAgent",
-    model=GEMINI_MODEL,
-    include_contents='none',
-    # MODIFIED Instruction: More nuanced completion criteria, look for clear improvement paths.
-    instruction=f"""You are a Constructive Critic AI reviewing a short document draft (typically 2-6 sentences). Your goal is balanced feedback.
-
-    **Document to Review:**
-    ```
-    {{current_document}}
-    ```
-
     **Task:**
-    Review the document for clarity, engagement, and basic coherence according to the initial topic (if known).
-
-    IF you identify 1-2 *clear and actionable* ways the document could be improved to better capture the topic or enhance reader engagement (e.g., "Needs a stronger opening sentence", "Clarify the character's goal"):
-    Provide these specific suggestions concisely. Output *only* the critique text.
-
-    ELSE IF the document is coherent, addresses the topic adequately for its length, and has no glaring errors or obvious omissions:
-    Respond *exactly* with the phrase "{COMPLETION_PHRASE}" and nothing else. It doesn't need to be perfect, just functionally complete for this stage. Avoid suggesting purely subjective stylistic preferences if the core is sound.
-
-    Do not add explanations. Output only the critique OR the exact completion phrase.
-""",
-    description="Reviews the current draft, providing critique if clear improvements are needed, otherwise signals completion.",
-    tools=[ _retrieve_context_zilliz, search_with_exa],
-    output_key=STATE_CRITICISM
+    IF the response meets all quality standards (accurate, well-formatted, professional):
+    Respond EXACTLY with: "{QUALITY_APPROVED_PHRASE}"
     
+    ELSE provide specific, actionable critique:
+    - What needs improvement
+    - Specific issues found
+    - Suggested fixes
+    
+    Output only the critique OR the approval phrase.""",
+    output_key=STATE_QUALITY_CRITIQUE
 )
 
+# Response Refiner - Applies critique or exits loop
+response_refiner = LlmAgent(
+    name="ResponseRefiner",
+    model="gemini-2.5-flash",
+    include_contents='default',  # Include context
+    instruction=f"""You are a Response Refiner for Policy Pulse.
+    
+    **Current Response:**
+    {{{STATE_CURRENT_RESPONSE}}}
+    
+    **Quality Critique:**
+    {{{STATE_QUALITY_CRITIQUE}}}
+    
+    **TASK:**
+    
+    If the critique says "{QUALITY_APPROVED_PHRASE}":
+    → Call the exit_quality_loop tool (do not write anything)
+    
+    Otherwise, improve the current response by:
+    - Fixing the specific issues mentioned in the critique
+    - Ensuring proper citation format [DOC X]
+    - Improving clarity and professionalism
+    - Output ONLY the complete improved response text (not a summary or apology)
+    
+    DO NOT say "I apologize" or explain what you're doing. Just output the improved response or call the tool.""",
+    tools=[exit_quality_loop],
+    output_key=STATE_CURRENT_RESPONSE
+)
 
-# STEP 2b: Refiner/Exiter Agent (Inside the Refinement Loop)
-refiner_agent_in_loop = LlmAgent(
-    name="RefinerAgent",
-    model=GEMINI_MODEL,
-    # Relies solely on state via placeholders
+# Quality Review Loop - This is the main export for use by other agents
+quality_review_loop = LoopAgent(
+    name="QualityReviewLoop",
+    sub_agents=[
+        quality_critic,
+        response_refiner
+    ],
+    max_iterations=3  # Prevent infinite loops
+)
+
+# Output agent - Simply outputs the refined response from state
+output_agent = LlmAgent(
+    name="OutputAgent",
+    model="gemini-2.5-flash",
     include_contents='none',
-    instruction=f"""You are a Creative Writing Assistant refining a document based on feedback OR exiting the process.
-    **Current Document:**
-    ```
-    {{current_document}}
-    ```
-    **Critique/Suggestions:**
-    {{criticism}}
+    instruction=f"""Your task is to output the final refined response exactly as written in the state, with no changes or additions.
 
-    **Task:**
-    Analyze the 'Critique/Suggestions'.
-    IF the critique is *exactly* "{COMPLETION_PHRASE}":
-    You MUST call the 'exit_loop' function. Do not output any text.
-    ELSE (the critique contains actionable feedback):
-    Carefully apply the suggestions to improve the 'Current Document'. Output *only* the refined document text.
+**Refined Response from State:**
+{{{STATE_CURRENT_RESPONSE}}}
 
-    Do not add explanations. Either output the refined document OR call the exit_loop function.
-""",
-    description="Refines the document based on critique, or calls exit_loop if critique indicates completion.",
-    tools=[exit_loop, _retrieve_context_zilliz, search_with_exa],
-    output_key=STATE_CURRENT_DOC # Overwrites state['current_document'] with the refined version
-    
+Output this response verbatim. Do not add commentary, apologies, or explanations."""
 )
 
-
-# STEP 2: Refinement Loop Agent
-refinement_loop = LoopAgent(
-    name="RefinementLoop",
-    # Agent order is crucial: Critique first, then Refine/Exit
+# Pipeline that includes the loop and output
+quality_pipeline = SequentialAgent(
+    name="QualityPipeline",
     sub_agents=[
-        critic_agent_in_loop,
-        refiner_agent_in_loop,
-    ],
-    max_iterations=5 # Limit loops
+        quality_review_loop,
+        output_agent
+    ]
 )
 
-# STEP 3: Overall Sequential Pipeline
-# For ADK tools compatibility, the root agent must be named `root_agent`
-root_agent = SequentialAgent(
-    name="IterativeWritingPipeline",
-    sub_agents=[
-        topic_setter_agent,   # Generate the initial topic
-        initial_writer_agent, # Run second to create initial doc using the topic
-        refinement_loop       # Then run the critique/refine loop
-    ],
-    description="Generates a topic, writes an initial document, and then iteratively refines it with critique using an exit tool."
-)
+# Export the quality pipeline as the root agent
+# This agent expects STATE_CURRENT_RESPONSE to be set by a previous agent
+# It reviews and refines the response in place, then outputs it
+root_agent = quality_pipeline
+
+# Note: FAQ_agent and other agents should use quality_review_loop in a pipeline:
+# SequentialAgent(sub_agents=[their_responder, quality_review_loop])
+

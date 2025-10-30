@@ -15,16 +15,27 @@ import os
 import logging
 
 from google.adk.models.lite_llm import LiteLlm
-from google.adk.agents import Agent
+from google.adk.agents import Agent, SequentialAgent, LlmAgent, LoopAgent
 from google.adk.tools import  google_search
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from google.genai import types
+
+
+# Import quality loop components from Workflow_agent
+from agents.policy_pulse_agent.Workflow_agent.agent import (
+    quality_pipeline,
+    STATE_CURRENT_RESPONSE,
+    STATE_QUALITY_CRITIQUE,
+    QUALITY_APPROVED_PHRASE
+)
 from ..tools import search_with_tavily_faq, search_with_exa, _retrieve_context_zilliz
+from google.adk.tools.agent_tool import AgentTool #Wraps entire agents as tools
 
 # Configure detailed logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
 
 # maps_toolset = MCPToolset(
 #     connection_params=StdioConnectionParams(
@@ -51,6 +62,7 @@ INSTRUCTION = (
         # - Before calling a tool: "🔧 CALLING: [tool_name] with query: [query],
         # - Then call the tool,
         # - After getting results: "✅ COMPLETED: [tool_name] returned [summary]"""
+        "You must use the workflow tool to refine youre response\n"
         "You MUST use the citation format [DOC X] where X is the document number. The source list at the bottom MUST  cover ALL the sources that made it into the final response. You should not cite more than 6 sources in the Source list although every claim in the response should be supported. They include the DOC number for each source and these DOC numbers should be in consecutive number i.e DOC 1, DOc2, DOC 3 and not DOC 1 DOC 4 DOC 6 and so you may need to amend the document references that come back from your tools to effect this. For example, if three unique references are made in the response then there should be three unique resferences in the Sources list. This is critical!\n\n"
         " Sources obtained from the _retrieve_context tool can be given author: ""We Are Eden"" and the rest of the metadata for such RAG documents should also be used. Sources returned by the web search function must include details like authors, publication year and URL if availabl \n"
         "INCORRECT: 'Companies should provide fertility benefits [1].'\n"
@@ -83,15 +95,27 @@ model_openai=LiteLlm(
         api_key=os.environ.get("OPENROUTER_API_KEY"),
     )
 
-FAQ_agent = Agent(
-    name="FAQ_agent",
+# Create initial FAQ responder (replaces your current FAQ_agent)
+faq_initial_responder = LlmAgent(
+    name="FAQ_InitialResponder",
     model=model,
-    description=(
-        "Agent which answers FAQ questions on the subject of reproductive and fertility health."
-    ),
+    include_contents='default',  # Include conversation history
+    description="Generates initial FAQ response using RAG and web search",
     instruction=INSTRUCTION,
+    tools=[_retrieve_context_zilliz, search_with_exa],
     generate_content_config=types.GenerateContentConfig(
-        temperature=0.1,  # Adjust as needed (0.0-1.0)
+        temperature=0.1
     ),
-    tools=[ _retrieve_context_zilliz, search_with_exa]
+    output_key=STATE_CURRENT_RESPONSE  # CRITICAL: Set output for quality loop
+)
+
+
+# Create FAQ agent with quality loop
+FAQ_agent = SequentialAgent(
+    name="FAQ_agent",
+    sub_agents=[
+        faq_initial_responder,  # Initial response with tools
+        quality_pipeline        # Quality refinement from Workflow_agent
+    ],
+    description="FAQ agent with iterative quality refinement"
 )

@@ -51,7 +51,6 @@ from google.adk.tools import FunctionTool, agent_tool, google_search #Wtappers f
 from google.adk.tools.agent_tool import AgentTool #Wraps entire agents as tools
 from google.adk.tools.tool_context import ToolContext #For loop exit tools
 from google.adk.agents.callback_context import CallbackContext #Access to session state during execution
-from google.adk.models import LlmRequest, LlmResponse
 from google.adk.plugins.base_plugin import BasePlugin # For custom pre/post-processing logic
 from google.adk.agents.invocation_context import InvocationContext # For plugin callbacks
 
@@ -77,7 +76,6 @@ sys.path.insert(0, os.path.abspath(project_root))
 from agents.policy_pulse_agent.FAQ_agent import FAQ_agent
 from agents.policy_pulse_agent.ReportWriting_agent import ReportWriting_agent
 from agents.policy_pulse_agent.ReportWriting_OpenAI_agent import ReportWriting_OpenAI_agent
-from agents.policy_pulse_agent.Workflow_agent import Workflow_agent
 # === CONFIGURATION ===
 APP_NAME = "policy_pulse_app"  # Used to namespace sessions in database
 USER_ID = "default_user"  # Fallback if no user context provided
@@ -191,15 +189,6 @@ def exit_quality_loop(tool_context: ToolContext):
     print(f"[QualityLoop] Exit triggered by {tool_context.agent_name}")
     tool_context.actions.escalate = True
     return {"status": "quality_approved"}
-
-# =============================================================================
-# STATE KEYS - For Loop Agent State Management
-# =============================================================================
-
-STATE_USER_QUERY = "user_query"
-STATE_CURRENT_RESPONSE = "current_response"
-STATE_QUALITY_CRITIQUE = "quality_critique"
-QUALITY_APPROVED_PHRASE = "RESPONSE_APPROVED"
 
 # =============================================================================
 # ROUTING LOGIC - QUERY CLASSIFICATION
@@ -716,77 +705,6 @@ model_openai=LiteLlm(
         api_key=os.environ.get("OPENROUTER_API_KEY"),
     )
 
-# =============================================================================
-# QUALITY REVIEW LOOP AGENTS (for FAQ refinement)
-# =============================================================================
-
-# Quality Critic - Reviews FAQ responses
-quality_critic = LlmAgent(
-    name="QualityCritic",
-    model="gemini-2.5-flash",
-    include_contents='none',
-    instruction=f"""You are a Quality Assurance Critic for Policy Pulse FAQ responses.
-    
-    Review this response for:
-    - Accuracy and completeness
-    - Professional tone
-    - Proper citation format [DOC X]
-    - No PII or inappropriate content
-    - Clear structure and formatting
-    
-    **Response to Review:**
-    {{{STATE_CURRENT_RESPONSE}}}
-    
-    **Task:**
-    IF the response meets all quality standards (accurate, well-formatted, professional):
-    Respond EXACTLY with: "{QUALITY_APPROVED_PHRASE}"
-    
-    ELSE provide specific, actionable critique:
-    - What needs improvement
-    - Specific issues found
-    - Suggested fixes
-    
-    Output only the critique OR the approval phrase.""",
-    output_key=STATE_QUALITY_CRITIQUE
-)
-
-# Response Refiner - Applies critique or exits loop
-response_refiner = LlmAgent(
-    name="ResponseRefiner",
-    model="gemini-2.5-flash",
-    include_contents='none',
-    instruction=f"""You are a Response Refiner for Policy Pulse.
-    
-    **Current Response:**
-    {{{STATE_CURRENT_RESPONSE}}}
-    
-    **Quality Critique:**
-    {{{STATE_QUALITY_CRITIQUE}}}
-    
-    **Task:**
-    IF the critique is EXACTLY "{QUALITY_APPROVED_PHRASE}":
-    Call the exit_quality_loop function immediately.
-    
-    ELSE apply the critique to improve the response:
-    - Fix formatting issues
-    - Correct citation format to [DOC X]
-    - Improve clarity and professionalism
-    - Address all points in the critique
-    
-    Output only the improved response OR call exit_quality_loop.""",
-    tools=[exit_quality_loop],
-    output_key=STATE_CURRENT_RESPONSE
-)
-
-# Quality Review Loop
-quality_review_loop = LoopAgent(
-    name="QualityReviewLoop",
-    sub_agents=[
-        quality_critic,
-        response_refiner
-    ],
-    max_iterations=3  # Prevent infinite loops
-)
 
 # === WRAP SUB-AGENTS AS TOOLS ===
 # UNUSUAL: We wrap entire agents as tools
@@ -794,64 +712,23 @@ quality_review_loop = LoopAgent(
 # The root agent sees these as function calls, ADK handles the delegation
 FAQ_tool = AgentTool(agent=FAQ_agent)
 ReportWriting_tool = AgentTool(agent=ReportWriting_OpenAI_agent)
-Workflow_agent_tool = AgentTool(agent=Workflow_agent)
 
-# =============================================================================
-# ROOT AGENT WITH OPTIONAL QUALITY LOOP
-# =============================================================================
-# 
-# ARCHITECTURE:
-# Option 1: Simple Agent (current) - Direct FAQ/Report delegation
-# Option 2: Sequential Agent with Loop - FAQ → Quality Review Loop → Output
-#
-# To enable quality loop: Set USE_QUALITY_LOOP = True
-# This wraps responses in an iterative refinement process
-# =============================================================================
-
-USE_QUALITY_LOOP = True  # Set to True to enable quality review loop
-
-if USE_QUALITY_LOOP:
-    # Create initial response generator
-    # IMPORTANT: Must use LlmAgent with output_key so quality loop can read the response
-    initial_responder = LlmAgent(
-        name="InitialResponder",
-        model=model,
-        include_contents='default',  # Include conversation history
-        description="Generates initial response to user queries",
-        instruction=INSTRUCTION,
-        tools=[FAQ_tool, ReportWriting_tool],
-        generate_content_config=types.GenerateContentConfig(
-            temperature=0.2,
-        ),
-        output_key=STATE_CURRENT_RESPONSE  # CRITICAL: Set output for quality loop
-    )
-    
-    # Wrap in sequential pipeline: Response → Quality Loop
-    root_agent = SequentialAgent(
-        name="root_agent",
-        sub_agents=[
-            initial_responder,
-            quality_review_loop
-        ],
-        description="Policy Pulse agent with iterative quality refinement"
-    )
-else:
-    # Original simple agent (current behavior)
-    root_agent = Agent(
+# Original simple agent (current behavior)
+root_agent = Agent(
         name="root_agent",
         model=model,
         description=(
             "Reproductive and fertility health agent."
         ),
         instruction=INSTRUCTION,
-        tools = [FAQ_tool, ReportWriting_tool, Workflow_agent_tool],
+        tools = [FAQ_tool, ReportWriting_tool],
         generate_content_config=types.GenerateContentConfig(
             temperature=0.2,  # Adjust as needed (0.0-1.0)
     
         ),
         #before_agent_callback=fast_route_before_agent_callback,    
         #sub_agents = []
-)
+    )
     
 
 # Register the plugin (but only use if enabled)
@@ -862,25 +739,14 @@ routing_plugin = RoutingPlugin()
 # Plugins are registered here
 
 # IMPORTANT: RoutingPlugin bypasses the SequentialAgent pipeline
-# If USE_QUALITY_LOOP = True, disable plugins to allow loop to run
-ENABLE_ROUTING_PLUGIN = False  # Set to True to enable fast-path routing
 
-if ENABLE_ROUTING_PLUGIN:
-    runner = Runner(
+runner = Runner(
         session_service=session_service,
         artifact_service=artifact_service,
         app_name = APP_NAME,
         agent = root_agent,
-        plugins=[routing_plugin]  # Fast-path routing enabled
-    )
-else:
-    runner = Runner(
-        session_service=session_service,
-        artifact_service=artifact_service,
-        app_name = APP_NAME,
-        agent = root_agent,
-        # No plugins - allows quality loop to run
-    )
+        plugins=[routing_plugin] ) # Fast-path routing enabled
+
 
 # =============================================================================
 # CLI ENTRY POINT (for testing)
