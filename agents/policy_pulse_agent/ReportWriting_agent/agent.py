@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.abspath(project_root))
 
 from google.adk.agents import Agent
 from google.adk.tools import FunctionTool, agent_tool, google_search
-from agents.policy_pulse_agent.tools import search_with_tavily_report, search_with_exa, _retrieve_context
+from agents.policy_pulse_agent.tools import search_with_tavily_report, search_with_exa, _retrieve_context_zilliz
 
 INSTRUCTION = (
   "You are a very knowledgeable compliance assistant specializing in workplace reproductive and fertility health.\n\n"
@@ -62,5 +62,5 @@ ReportWriting_agent = Agent(
         "Agent which long-form and research type writing in prder to draft reports, policies etc."
     ),
     instruction=INSTRUCTION,
-    tools=[search_with_tavily_report, _retrieve_context]
+    tools=[search_with_tavily_report, _retrieve_context_zilliz]
 )

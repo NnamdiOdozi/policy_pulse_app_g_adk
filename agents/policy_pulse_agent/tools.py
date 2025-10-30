@@ -36,7 +36,7 @@ def _get_cached_zilliz_client():
         zilliz_token=os.getenv("ZILLIZ_API_KEY"),
     )
 
-def get_zilliz_client()
+def get_zilliz_client():
     """Get the cached ZillizMigrationTool instance."""
     return _get_cached_zilliz_client()
 

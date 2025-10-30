@@ -345,7 +345,7 @@ root_agent = Agent(
 )
 
 # Register the plugin
-routing_plugin = RoutingPlugin()
+#routing_plugin = RoutingPlugin()
 
 # === CREATE RUNNER ===
 # Runner executes the agent conversation loop
