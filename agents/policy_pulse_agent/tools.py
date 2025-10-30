@@ -737,6 +737,335 @@ search_with_google = AgentTool(search_agent)
 #     ]
 # )
 
+# ========== FILE WRITING TOOLS ==========
+
+def write_markdown_file(
+    filename: str,
+    content: str,
+    output_dir: str = "output"
+) -> Dict[str, Any]:
+    """
+    Write content to a markdown file (.md).
+    
+    Use this tool when you need to save generated content as markdown files.
+    Perfect for policies, reports, guides, and documentation.
+    
+    Args:
+        filename (str): Name of the file (with or without .md extension)
+        content (str): Markdown content to write
+        output_dir (str): Directory to save file (default: "output")
+    
+    Returns:
+        Dict with status, file_path, and file_size
+    
+    Example:
+        result = write_markdown_file(
+            filename="maternity_policy.md",
+            content="# Maternity Policy\n\n## Introduction\n..."
+        )
+    """
+    try:
+        # Ensure filename has .md extension
+        if not filename.endswith('.md'):
+            filename = f"{filename}.md"
+        
+        # Create output directory if it doesn't exist
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
+        # Full path
+        file_path = os.path.join(output_dir, filename)
+        
+        # Write content
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        # Get file size
+        file_size = os.path.getsize(file_path)
+        
+        return {
+            "status": "success",
+            "file_type": "markdown",
+            "file_path": os.path.abspath(file_path),
+            "filename": filename,
+            "file_size_bytes": file_size,
+            "message": f"Markdown file written successfully: {filename}"
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Failed to write markdown file: {str(e)}"
+        }
+
+
+def write_text_file(
+    filename: str,
+    content: str,
+    output_dir: str = "output"
+) -> Dict[str, Any]:
+    """
+    Write content to a plain text file (.txt).
+    
+    Use this for simple text output, logs, or data files.
+    
+    Args:
+        filename (str): Name of the file (with or without .txt extension)
+        content (str): Text content to write
+        output_dir (str): Directory to save file (default: "output")
+    
+    Returns:
+        Dict with status, file_path, and file_size
+    """
+    try:
+        # Ensure filename has .txt extension
+        if not filename.endswith('.txt'):
+            filename = f"{filename}.txt"
+        
+        # Create output directory if it doesn't exist
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
+        # Full path
+        file_path = os.path.join(output_dir, filename)
+        
+        # Write content
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        # Get file size
+        file_size = os.path.getsize(file_path)
+        
+        return {
+            "status": "success",
+            "file_type": "text",
+            "file_path": os.path.abspath(file_path),
+            "filename": filename,
+            "file_size_bytes": file_size,
+            "message": f"Text file written successfully: {filename}"
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Failed to write text file: {str(e)}"
+        }
+
+
+def write_word_document(
+    filename: str,
+    content: str,
+    output_dir: str = "output",
+    include_formatting: bool = True
+) -> Dict[str, Any]:
+    """
+    Write content to a Word document (.docx).
+    
+    Converts markdown-style formatting to Word formatting:
+    - # Heading 1 → Heading 1 style
+    - ## Heading 2 → Heading 2 style
+    - **bold** → bold text
+    - *italic* → italic text
+    - - bullet → bullet list
+    
+    Args:
+        filename (str): Name of the file (with or without .docx extension)
+        content (str): Content to write (supports markdown formatting)
+        output_dir (str): Directory to save file (default: "output")
+        include_formatting (bool): Apply markdown-style formatting (default: True)
+    
+    Returns:
+        Dict with status, file_path, and file_size
+    
+    Example:
+        result = write_word_document(
+            filename="policy.docx",
+            content="# Policy Title\n\n## Section 1\nContent here..."
+        )
+    """
+    try:
+        # Check if python-docx is installed
+        try:
+            from docx import Document
+            from docx.shared import Pt, RGBColor
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+        except ImportError:
+            return {
+                "status": "error",
+                "error": "python-docx not installed. Run: pip install python-docx"
+            }
+        
+        # Ensure filename has .docx extension
+        if not filename.endswith('.docx'):
+            filename = f"{filename}.docx"
+        
+        # Create output directory if it doesn't exist
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
+        # Full path
+        file_path = os.path.join(output_dir, filename)
+        
+        # Create document
+        doc = Document()
+        
+        if include_formatting:
+            # Process content line by line with markdown formatting
+            lines = content.split('\n')
+            i = 0
+            while i < len(lines):
+                line = lines[i].strip()
+                
+                if not line:
+                    # Empty line - add paragraph break
+                    doc.add_paragraph()
+                elif line.startswith('# '):
+                    # Heading 1
+                    doc.add_heading(line[2:], level=1)
+                elif line.startswith('## '):
+                    # Heading 2
+                    doc.add_heading(line[3:], level=2)
+                elif line.startswith('### '):
+                    # Heading 3
+                    doc.add_heading(line[4:], level=3)
+                elif line.startswith('- ') or line.startswith('* '):
+                    # Bullet list
+                    doc.add_paragraph(line[2:], style='List Bullet')
+                elif line.startswith('1. ') or line.startswith('2. '):
+                    # Numbered list
+                    doc.add_paragraph(line[3:], style='List Number')
+                else:
+                    # Regular paragraph with inline formatting
+                    p = doc.add_paragraph()
+                    _add_formatted_text(p, line)
+                
+                i += 1
+        else:
+            # No formatting - just add raw content
+            doc.add_paragraph(content)
+        
+        # Save document
+        doc.save(file_path)
+        
+        # Get file size
+        file_size = os.path.getsize(file_path)
+        
+        return {
+            "status": "success",
+            "file_type": "word",
+            "file_path": os.path.abspath(file_path),
+            "filename": filename,
+            "file_size_bytes": file_size,
+            "message": f"Word document written successfully: {filename}"
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Failed to write Word document: {str(e)}"
+        }
+
+
+def _add_formatted_text(paragraph, text: str):
+    """
+    Helper function to add text with inline markdown formatting to a Word paragraph.
+    
+    Supports:
+    - **bold** → bold text
+    - *italic* → italic text
+    - [DOC X] → keep as is (citations)
+    """
+    try:
+        from docx.shared import Pt
+    except ImportError:
+        # Fallback if docx not available
+        paragraph.add_run(text)
+        return
+    
+    import re
+    
+    # Pattern to match **bold**, *italic*, or regular text
+    pattern = r'(\*\*.*?\*\*|\*.*?\*|[^\*]+)'
+    matches = re.findall(pattern, text)
+    
+    for match in matches:
+        if match.startswith('**') and match.endswith('**'):
+            # Bold text
+            run = paragraph.add_run(match[2:-2])
+            run.bold = True
+        elif match.startswith('*') and match.endswith('*'):
+            # Italic text
+            run = paragraph.add_run(match[1:-1])
+            run.italic = True
+        else:
+            # Regular text
+            paragraph.add_run(match)
+
+
+def write_file(
+    filename: str,
+    content: str,
+    output_dir: str = "output",
+    file_type: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Universal file writing tool that auto-detects file type from extension.
+    
+    Supports:
+    - .md → Markdown file
+    - .txt → Plain text file
+    - .docx → Word document
+    
+    Args:
+        filename (str): Name of the file with extension
+        content (str): Content to write
+        output_dir (str): Directory to save file (default: "output")
+        file_type (str): Optional file type override ('markdown', 'text', 'word')
+    
+    Returns:
+        Dict with status, file_path, and file_size
+    
+    Example:
+        # Auto-detect from extension
+        result = write_file("policy.md", "# My Policy\n...")
+        
+        # Or specify type explicitly
+        result = write_file("policy", "# My Policy\n...", file_type="markdown")
+    """
+    try:
+        # Determine file type
+        if file_type:
+            detected_type = file_type.lower()
+        elif filename.endswith('.md'):
+            detected_type = 'markdown'
+        elif filename.endswith('.txt'):
+            detected_type = 'text'
+        elif filename.endswith('.docx'):
+            detected_type = 'word'
+        else:
+            # Default to text if unknown
+            detected_type = 'text'
+        
+        # Route to appropriate function
+        if detected_type == 'markdown':
+            return write_markdown_file(filename, content, output_dir)
+        elif detected_type == 'text':
+            return write_text_file(filename, content, output_dir)
+        elif detected_type == 'word':
+            return write_word_document(filename, content, output_dir)
+        else:
+            return {
+                "status": "error",
+                "error": f"Unsupported file type: {detected_type}"
+            }
+            
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Failed to write file: {str(e)}"
+        }
+
+
 # ========== EXPORTS FOR BACKWARD COMPATIBILITY ==========
 __all__ = [
     'search_with_tavily_faq',
@@ -745,6 +1074,12 @@ __all__ = [
     'search_with_serpapi',
     'search_with_google',
     '_retrieve_context',
+    '_retrieve_context_zilliz',
     'get_search_tool',
-    'search_all_providers'
+    'search_all_providers',
+    # File writing tools
+    'write_markdown_file',
+    'write_text_file',
+    'write_word_document',
+    'write_file'
 ]

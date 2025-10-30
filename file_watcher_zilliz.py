@@ -338,6 +338,7 @@ def main():
     print(f"Supported extensions: {', '.join(SUPPORTED_EXTENSIONS)}")
     print("\nPress Ctrl+C to stop\n")
     print("="*70)
+    print(f"voyage_api_key={os.getenv('VOYAGE_API_KEY')}")
     
     # Verify directory exists
     watch_path = Path(WATCH_DIRECTORY)
