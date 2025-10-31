@@ -7,9 +7,40 @@ import time
 from typing import List, Dict, Any, Optional, Tuple
 from tqdm import tqdm
 
+import logging
+from logging.handlers import RotatingFileHandler
+
 # For embeddings and vector database
 import voyageai
 from pymilvus import MilvusClient, DataType, Function, FunctionType, AnnSearchRequest, RRFRanker
+
+
+# === LOGGING SETUP ===
+# Create logs directory if it doesn't exist
+LOG_DIR_NAME = "embedding_logs"
+logs_dir = Path(__file__).resolve().parent / LOG_DIR_NAME
+os.makedirs(logs_dir, exist_ok=True)
+
+# Single cumulative log file for all runs
+error_log_file = logs_dir / "errors_warnings.log"
+
+# Configure logging
+logging.basicConfig(
+    level=logging.WARNING,  # Only WARNING and ERROR will be logged
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        RotatingFileHandler(
+            error_log_file,
+            maxBytes=10*1024*1024,  # 10MB max file size
+            backupCount=5  # Keep 5 backup files
+        )
+    ]
+)
+
+# Create logger
+logger = logging.getLogger(__name__)
+
+print(f"Error/Warning logging enabled: {error_log_file}")
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -364,7 +395,7 @@ Source: {chunk.get('filename', '')}"""
             return True
             
         except Exception as e:
-            print(f"Warning: Could not save processing log: {e}")
+            print(f"Warning: Could not save processing log: {e}", exc_info=True)
             return False
     
     def generate_embeddings(self, texts: List[str], show_progress: bool = True) -> List[List[float]]:
@@ -407,7 +438,7 @@ Source: {chunk.get('filename', '')}"""
                     time.sleep(0.5)
                     
             except Exception as e:
-                print(f"Error generating embeddings: {e}")
+                logger.error(f"Error generating embeddings: {e}", exc_info=True)
                 # Return empty embeddings for this batch to maintain alignment
                 all_embeddings.extend([[0.0] * EMBEDDING_DIM] * len(batch))
         
@@ -436,7 +467,7 @@ Source: {chunk.get('filename', '')}"""
             print(f"Inserting {len(chunks)} chunks into collection '{collection_name}'...")
             self.insert_chunks(collection_name, chunks)
         except Exception as e:
-            print(f"Error inserting chunks: {e}")
+            logger.error(f"Error inserting chunks: {e}", exc_info=True)
             return []
 
         return chunks
@@ -535,7 +566,7 @@ Source: {chunk.get('filename', '')}"""
                 )
                 
             except Exception as e:
-                print(f"Error inserting batch: {e}")
+                logger.error(f"Error inserting batch: {e}", exc_info=True)
             
             # Avoid rate limiting
             if len(batches) > 1:
@@ -576,7 +607,7 @@ Source: {chunk.get('filename', '')}"""
             return None
             
         except Exception as e:
-            print(f"Error querying file hash: {e}")
+            logger.error(f"Error querying file hash: {e}", exc_info=True)
             return None
     
     def update_chunks_metadata(self, collection_name: str, old_file_path: str, 
@@ -668,12 +699,12 @@ Source: {chunk.get('filename', '')}"""
                         data=[updated_chunk]
                     )
                 except Exception as e:
-                    print(f"⚠️  Error upserting chunk {chunk_id}: {e}")
+                    print(f"⚠️  Error upserting chunk {chunk_id}: {e}", exc_info=True)
             
             print(f"✅ Updated {len(unique_ids)} chunks with new filename: {new_filename}")
             
         except Exception as e:
-            print(f"❌ Error updating chunk metadata: {e}")
+            print(f"❌ Error updating chunk metadata: {e}", exc_info=True)
             import traceback
             traceback.print_exc()
         
@@ -702,7 +733,7 @@ def main():
         print(f"Processed chunks: {len(chunks)}")
         print(f"Chunks lost: {raw_count - len(chunks)}")
     except Exception as e:
-        print(f"Error in main process: {e}")
+        logger.error(f"Error in main process: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()

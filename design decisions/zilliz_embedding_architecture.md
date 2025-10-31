@@ -8,61 +8,77 @@ This document outlines the architecture of the Zilliz embedding and retrieval sy
 
 ```mermaid
 graph TD
-    User["User Query"] --> Agent["Root Agent"]
-    Agent --> RetrievalFunction["_retrieve_context_zilliz()"]
-    
-    subgraph "Zilliz Search Service"
-        RetrievalFunction --> CachedClient["get_zilliz_client()"]
-        CachedClient --> ZillizTool["ZillizMigrationTool"]
-        ZillizTool -- "API Calls" --> ZillizCloud["Zilliz Cloud"]
-        ZillizTool -- "API Calls" --> VoyageAI["Voyage AI"]
+    subgraph Indexing["📥 DOCUMENT INDEXING PIPELINE"]
+        A[**Start: Initialize ZillizMigrationTool and DocumentProcessor**] --> B{**For Each Document File**}
+        
+        B -->|Process| C[**Extract Text from PDF/DOCX/TXT/MD**]
+        
+        C --> D[**Split into Chunks: 1000 chars, 200 overlap**]
+        
+        D --> E[**Enrich Chunk with OpenAI Summary**]
+        
+        E --> F[**Extract Keywords and Metadata**]
+        
+        F -->|More Files?| B
+        
+        B -->|All Files Processed| G[**Create/Check Collection in Zilliz**]
+        
+        G --> H[**Build Enriched Text for Each Chunk**]
+        
+        H --> I[**Generate Embeddings in Batches: Voyage AI**]
+        
+        I --> J[**Batch Upsert ALL Chunks to Zilliz**]
+        
+        J --> K[**Zilliz Auto-Generates BM25 Sparse Vectors**]
+        
+        K --> L[**Load Collection for Search**]
+        
+        L --> M[**Complete: Collection Ready**]
     end
     
-    subgraph "Document Processing"
-        Documents["Source Documents"] --> DocProcessor["Document Processor"]
-        DocProcessor --> TextExtraction["Extract Text"]
-        TextExtraction --> Chunking["Split into Chunks"]
-        Chunking --> Enrichment["Add Metadata"]
-        Enrichment --> Embedding["Generate Embeddings"]
-        Embedding --> Indexing["Index in Zilliz"]
+    M -.->|Collection Available| N
+    
+    subgraph Query["🔍 QUERY-TIME RETRIEVAL"]
+        N[**User Query**] --> O[**Root Agent**]
+        
+        O --> P[**Zilliz Search Service**]
+        
+        P --> Q[**_retrieve_context_zilliz**]
+        
+        Q --> R[**get_zilliz_client**]
+        
+        R --> S[**ZillizMigrationTool**]
+        
+        S -->|API Calls| T[**Zilliz Cloud**]
+        S -->|API Calls| U[**Voyage AI**]
+        
+        T --> V[**Return Results to Agent**]
+        U --> V
     end
-```
-
-## Component Diagram
-
-```mermaid
-graph TD
-    A[Start: Initialize<br/>ZillizIndexingTool<br/>API Keys: Voyage, OpenAI, Zilliz] --> B[Create/Check Collection<br/>Schema + Indexes + BM25 Function]
-    
-    B --> C{For Each<br/>Document File}
-    
-    C -->|Process File| D[1. Extract Text<br/>PDF/DOCX/TXT/MD]
-    
-    D --> E[2. Split into Chunks<br/>RecursiveCharacterTextSplitter<br/>1000 chars, 200 overlap]
-    
-    E --> F[3. Enrich Each Chunk<br/>• OpenAI: chunk_summary<br/>• Extract: keywords, section_title<br/>• Add: filename, file_hash, metadata]
-    
-    F --> G[4. Create Enriched Text<br/>Original + Summary + Context + Keywords]
-    
-    G --> H[5. Generate Embeddings<br/>Voyage AI: voyage-3-large<br/>1024-dim vectors]
-    
-    H --> I[6. Upsert Chunks to Zilliz<br/>Batch insert: chunks + vectors + metadata<br/>Auto-generates BM25 sparse vectors]
-    
-    I -->|More Files?| C
-    
-    C -->|Done| J[Complete<br/>Collection loaded & indexed<br/>Ready for search]
     
     style A fill:#e1f5e1
-    style B fill:#fff4e6
-    style C fill:#e3f2fd
+    style B fill:#e3f2fd
+    style C fill:#fce4ec
     style D fill:#fce4ec
     style E fill:#fce4ec
-    style F fill:#fce4ec
-    style G fill:#fff9c4
-    style H fill:#f3e5f5
-    style I fill:#e0f2f1
-    style J fill:#e1f5e1
-    end
+    style F fill:#fff9c4
+    style G fill:#fff4e6
+    style H fill:#fff9c4
+    style I fill:#f3e5f5
+    style J fill:#e0f2f1
+    style K fill:#e0f2f1
+    style L fill:#e0f2f1
+    style M fill:#e1f5e1
+    
+    style N fill:#e1f5e1
+    style O fill:#e3f2fd
+    style P fill:#e0f2f1
+    style Q fill:#e0f2f1
+    style R fill:#e0f2f1
+    style S fill:#e0f2f1
+    style T fill:#fff4e6
+    style U fill:#f3e5f5
+    style V fill:#e1f5e1    
 ```
 
 ## Core Components
