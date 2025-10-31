@@ -87,15 +87,6 @@ from agents.policy_pulse_agent.ReportWriting_OpenAI_agent import ReportWriting_O
 APP_NAME = "policy_pulse_app"  # Used to namespace sessions in database
 USER_ID = "default_user"  # Fallback if no user context provided
 
-# # Start MCP server as subprocess - this was just an experiment and is not needed for this project
-# mcp_proc = subprocess.Popen(
-#     ["python", "maps_mcp_server.py"],  # or absolute path
-#     env={**os.environ, "GOOGLE_MAPS_API_KEY": os.environ["GOOGLE_MAPS_API_KEY"]},
-# )
-
-# # Give it a few seconds to boot up
-# time.sleep(3)
-
 # === DATABASE SETUP ===
 db_url = os.environ.get("DATABASE_URL")  # e.g. "postgresql://user:pass@host:5432/dbname"
 if not db_url:

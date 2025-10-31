@@ -483,7 +483,7 @@ def _retrieve_context_zilliz(query: str,
         search_tool = get_zilliz_client()      
         # Try hybrid search first (TEXT_MATCH + semantic ranking)
         # This searches across text, chunk_summary, section_title, and semantic_keywords fields
-        hybrid_results = search_tool.hybrid_search_chunks(
+        hybrid_results = search_tool.hybrid_search_chunks_API(
             collection_name=collection,
             query=query,
             limit=min(max_chunks, 3),

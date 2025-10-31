@@ -16,12 +16,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "your-openai-api-key-here")  # For generating summaries
-VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "your-voyage-api-key-here")
-ZILLIZ_CLOUD_URI = os.environ.get("ZILLIZ_CLOUD_URI", "https://in03-768dd5416cd6745.serverless.aws-eu-central-1.cloud.zilliz.com")
-ZILLIZ_CLOUD_TOKEN = os.environ.get("ZILLIZ_API_KEY", "your-zilliz-token-here")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")  # For generating summaries
+VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY")
+ZILLIZ_CLOUD_URI = os.environ.get("ZILLIZ_CLOUD_URI")
+ZILLIZ_CLOUD_TOKEN = os.environ.get("ZILLIZ_API_KEY")
 BATCH_SIZE = 100  # Adjust based on your data and API limits
-COLLECTION_NAME = "WAE_2_docs_voyage_3_large"
+COLLECTION_NAME = os.getenv("ZILLIZ_COLLECTION_NAME")
 EMBEDDING_DIM = 1024  # Voyage 3 Large dimension
 EMBEDDING_MODEL_NAME = "voyage-3-large"
 DOCS_DIRECTORY = "Policy Pulse + AVE collab"  # Change to your actual directory path "Policy Pulse + AVE collab"
@@ -169,7 +169,7 @@ class ZillizMigrationTool:
             analyzer_params={"type": "english"},
         )
 
-        # Sparse vector field for BM25 (auto-generated from enriched_text)
+        # Sparse vector field for BM25 (auto-generated from enriched_text). This is calculated in Zilliz but is invisible to users; this is not a bug or problem
         schema.add_field(
             field_name="enriched_text_sparse",
             datatype=DataType.SPARSE_FLOAT_VECTOR,
@@ -205,9 +205,9 @@ class ZillizMigrationTool:
         schema.add_field("document_summary", datatype=DataType.VARCHAR, max_length=256)
 
         # Structured data
-        schema.add_field("semantic_keywords", datatype=DataType.JSON)
-        schema.add_field("related_chunks", datatype=DataType.JSON)
-        schema.add_field("cross_references", datatype=DataType.JSON)
+        schema.add_field("semantic_keywords", datatype=DataType.JSON) # I think we can delete this field since we have the derived keywords_text field now
+        schema.add_field("related_chunks", datatype=DataType.JSON) # this field is currently empty in Zilliz console
+        schema.add_field("cross_references", datatype=DataType.JSON) # this field is currently empty in Zilliz console
         
         # NEW: Flattened keywords for TEXT_MATCH
         schema.add_field(
@@ -392,7 +392,7 @@ Source: {chunk.get('filename', '')}"""
                     batch, 
                     model=EMBEDDING_MODEL_NAME, 
                     input_type="document",
-                    output_dimension=1024
+                    output_dimension=EMBEDDING_DIM
                 )
                 
                 # Add the embeddings to our results
@@ -464,8 +464,8 @@ Source: {chunk.get('filename', '')}"""
             "chunk_summary": chunk.get("chunk_summary", ""),
             "section_context": chunk.get("section_context", ""),
             "document_summary": chunk.get("document_summary", ""),
-            "semantic_keywords": chunk.get("semantic_keywords", []),
-            "related_chunks": [],  # Simplified: remove complex cross-doc analysis
+            #"semantic_keywords": chunk.get("semantic_keywords", []),
+            "related_chunks": [],  #
             "cross_references": chunk.get("cross_references", []),
             "keywords_text": keywords_text,  # NEW: flattened for TEXT_MATCH
             "vector": embedding
@@ -877,7 +877,7 @@ Source: {chunk.get('filename', '')}"""
         results = self.zilliz_client.hybrid_search(
             collection_name=collection_name,
             reqs=[vector_req, bm25_req],
-            ranker=RRFRanker(k=60),  
+            ranker=RRFRanker(k=60),  # Can also use WeightedRanker which gives results comparable to cosine similarity
             limit=limit,
             output_fields=[
                 "text", "enriched_text", "chunk_summary", "section_title", 
@@ -904,7 +904,7 @@ Source: {chunk.get('filename', '')}"""
                 "file_type": entity.get("file_type", ""),
                 "section_context": entity.get("section_context", ""),
                 "semantic_keywords": entity.get("semantic_keywords", []),
-                "score": 1.0 - hit.distance if hasattr(hit, 'distance') else hit.get('score', 0.0)
+                "score": hit.distance    # these are raw RRF scores
             })
         
         return formatted_results
