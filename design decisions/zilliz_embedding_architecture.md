@@ -28,6 +28,43 @@ graph TD
     end
 ```
 
+## Component Diagram
+
+```mermaid
+graph TD
+    A[Start: Initialize<br/>ZillizIndexingTool<br/>API Keys: Voyage, OpenAI, Zilliz] --> B[Create/Check Collection<br/>Schema + Indexes + BM25 Function]
+    
+    B --> C{For Each<br/>Document File}
+    
+    C -->|Process File| D[1. Extract Text<br/>PDF/DOCX/TXT/MD]
+    
+    D --> E[2. Split into Chunks<br/>RecursiveCharacterTextSplitter<br/>1000 chars, 200 overlap]
+    
+    E --> F[3. Enrich Each Chunk<br/>• OpenAI: chunk_summary<br/>• Extract: keywords, section_title<br/>• Add: filename, file_hash, metadata]
+    
+    F --> G[4. Create Enriched Text<br/>Original + Summary + Context + Keywords]
+    
+    G --> H[5. Generate Embeddings<br/>Voyage AI: voyage-3-large<br/>1024-dim vectors]
+    
+    H --> I[6. Upsert Chunks to Zilliz<br/>Batch insert: chunks + vectors + metadata<br/>Auto-generates BM25 sparse vectors]
+    
+    I -->|More Files?| C
+    
+    C -->|Done| J[Complete<br/>Collection loaded & indexed<br/>Ready for search]
+    
+    style A fill:#e1f5e1
+    style B fill:#fff4e6
+    style C fill:#e3f2fd
+    style D fill:#fce4ec
+    style E fill:#fce4ec
+    style F fill:#fce4ec
+    style G fill:#fff9c4
+    style H fill:#f3e5f5
+    style I fill:#e0f2f1
+    style J fill:#e1f5e1
+    end
+```
+
 ## Core Components
 
 ### 1. ZillizMigrationTool
