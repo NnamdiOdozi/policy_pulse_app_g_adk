@@ -24,7 +24,8 @@ BATCH_SIZE = 100  # Adjust based on your data and API limits
 COLLECTION_NAME = os.getenv("ZILLIZ_COLLECTION_NAME")
 EMBEDDING_DIM = 1024  # Voyage 3 Large dimension
 EMBEDDING_MODEL_NAME = "voyage-3-large"
-DOCS_DIRECTORY = "Policy Pulse + AVE collab"  # Change to your actual directory path "Policy Pulse + AVE collab"
+#DOCS_DIRECTORY = "Policy Pulse + AVE collab"  # Change to your actual directory path "Policy Pulse + AVE collab"
+DOCS_DIRECTORY = "Temp_docs_list"  # Change to your actual directory path "Policy Pulse + AVE collab"
 
 # === PATH SETUP ===
 # UNUSUAL: We manipulate sys.path to allow imports from parent directories
@@ -70,11 +71,11 @@ TRADE-OFFS:
 - Benefit: Consistent search behavior, rich LLM context, clean user display
 """
 
-class ZillizMigrationTool:
+class ZillizIndexingTool:
     def __init__(self, voyage_api_key: str, zilliz_uri: str, zilliz_token: str, openai_api_key: str = None):
         """
-        Initialize the migration tool with API keys and connection details. It  creates an instance of the DocumentProcessor class to load docs, chunk them and enrich them
-        
+        Initialize the indexing tool with API keys and connection details. It creates an instance of the DocumentProcessor class to load docs, chunk them and enrich them
+
         Args:
             voyage_api_key: API key for Voyage AI
             zilliz_uri: URI for Zilliz Cloud instance
@@ -89,16 +90,19 @@ class ZillizMigrationTool:
         
         self.document_processor = None
         if openai_api_key:
-            from Zilliz_src.document_processor import DocumentProcessor  # Adjust import as needed
+            from Zilliz_src.zilliz_doc_processor import DocumentProcessor  # Adjust import as needed
             self.document_processor = DocumentProcessor(openai_api_key)
         
         # Create logs directory if it doesn't exist
-        self.logs_dir = Path("embedding_logs")
-        self.logs_dir.mkdir(exist_ok=True)
+        LOG_DIR_NAME = "embedding_logs"
+        self.logs_dir = Path(__file__).resolve().parent / LOG_DIR_NAME
+        os.makedirs(self.logs_dir, exist_ok=True)
+       
         
         # Create single log file for this script run
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.current_log_file = self.logs_dir / f"chunks_log_{timestamp}.json"
+
+        self.current_log_file = os.path.join(self.logs_dir, f"chunks_log_{timestamp}.json")
         self.log_data = {
             "script_run": {
             "timestamp": datetime.datetime.now().isoformat(),
@@ -108,7 +112,7 @@ class ZillizMigrationTool:
             "chunks": []
         }
         
-        print("Clients initialized successfully")
+        print("Milvus and Voyage Clients initialized successfully")
 
     def create_collection(self, collection_name: str, dimension: int = EMBEDDING_DIM, drop_if_exists: bool = False):
         """
@@ -428,8 +432,13 @@ Source: {chunk.get('filename', '')}"""
             self.create_collection(collection_name, 1024)
         
         # Insert chunks into collection
-        self.insert_chunks(collection_name, chunks)
-        
+        try:
+            print(f"Inserting {len(chunks)} chunks into collection '{collection_name}'...")
+            self.insert_chunks(collection_name, chunks)
+        except Exception as e:
+            print(f"Error inserting chunks: {e}")
+            return []
+
         return chunks
     
     def _prepare_chunk_data(self, chunk, embedding, enriched_text):
@@ -464,7 +473,7 @@ Source: {chunk.get('filename', '')}"""
             "chunk_summary": chunk.get("chunk_summary", ""),
             "section_context": chunk.get("section_context", ""),
             "document_summary": chunk.get("document_summary", ""),
-            #"semantic_keywords": chunk.get("semantic_keywords", []),
+            "semantic_keywords": chunk.get("semantic_keywords", []),
             "related_chunks": [],  #
             "cross_references": chunk.get("cross_references", []),
             "keywords_text": keywords_text,  # NEW: flattened for TEXT_MATCH
@@ -786,7 +795,7 @@ Source: {chunk.get('filename', '')}"""
         desirable for policy analysis where document context matters.
         """
         # Extract potential keywords from the query
-        keywords = [word for word in query.split() if len(word) > 3]
+        keywords = [word for word in query.split() if len(word) > 3 and word not in ['that', 'this', 'with', 'from', 'have', 'were', 'they', 'their']]
         
         # Create text match filters for all searchable fields
         text_match_filters = []
@@ -910,8 +919,8 @@ Source: {chunk.get('filename', '')}"""
         return formatted_results
         
 def main():
-    # Initialize the migration tool with both Voyage and OpenAI API keys
-    migration_tool = ZillizMigrationTool(
+    # Initialize the indexing tool with both Voyage and OpenAI API keys
+    indexing_tool = ZillizIndexingTool(
         voyage_api_key=VOYAGE_API_KEY,
         zilliz_uri=ZILLIZ_CLOUD_URI,
         zilliz_token=ZILLIZ_CLOUD_TOKEN,
@@ -919,12 +928,12 @@ def main():
     )
     
     # Test raw chunk count first
-    raw_count = migration_tool.document_processor.test_raw_chunk_count(DOCS_DIRECTORY)
+    raw_count = indexing_tool.document_processor.test_raw_chunk_count(DOCS_DIRECTORY)
 
     # Process all documents in the directory and insert into Zilliz
     try:
         #chunks = {"test": "test"} #remove this line once done with testing
-        chunks = migration_tool.process_directory_and_insert(
+        chunks = indexing_tool.process_directory_and_insert(
             collection_name=COLLECTION_NAME,
             directory_path=DOCS_DIRECTORY
         )
@@ -939,7 +948,7 @@ def main():
         # Example searches using the new collection
         if chunks:
             print("\nSemantic Search Example:")
-            results = migration_tool.search_chunks(
+            results = indexing_tool.search_chunks(
                 collection_name=COLLECTION_NAME,
                 query="What are the maternity leave entitlements?",
                 limit=5
@@ -952,7 +961,7 @@ def main():
                 print("---")
             
             print("\nFiltered Search Example:")
-            results = migration_tool.search_chunks(
+            results = indexing_tool.search_chunks(
                 collection_name=COLLECTION_NAME,
                 query="maternity policy requirements",
                 limit=5,
@@ -966,7 +975,7 @@ def main():
                 print("---")
             
             print("\nHybrid Search Example:")
-            results = migration_tool.hybrid_search_chunks_API(
+            results = indexing_tool.hybrid_search_chunks_API(
                 collection_name=COLLECTION_NAME,
                 query="maternity leave duration weeks",
                 limit=5
@@ -986,7 +995,7 @@ def main():
                 if related_chunks:
                     print("\nRelated Chunks for First Result:")
                     # Query for the related chunks
-                    related_results = migration_tool.zilliz_client.query(
+                    related_results = indexing_tool.zilliz_client.query(
                         collection_name=COLLECTION_NAME,
                         filter=f"chunk_id in {related_chunks}",
                         output_fields=["chunk_summary", "section_title", "filename"]

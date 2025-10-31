@@ -6,6 +6,7 @@ from pathlib import Path
 import time
 from typing import List, Dict, Any, Optional, Tuple
 from tqdm import tqdm
+import argparse
 
 # For embeddings and vector database
 import voyageai
@@ -88,12 +89,15 @@ class ZillizSearchTool:
         
               
         # Create logs directory if it doesn't exist
-        self.logs_dir = Path("search_logs")
-        self.logs_dir.mkdir(exist_ok=True)
-        
-        # Create single log file for this script run and need to write to file after search is completed - this is not currently being used and I should consider removing later on. 
+        LOG_DIR_NAME = "search_logs"
+        self.logs_dir = Path(__file__).resolve().parent / LOG_DIR_NAME
+        os.makedirs(self.logs_dir, exist_ok=True)
+
+       
+
+        # Create single log file for this script run and need to write to file after search is completed - this is not currently being used and I should consider removing later on.
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.current_log_file = self.logs_dir / f"chunks_log_{timestamp}.json"
+        self.current_log_file = os.path.join(self.logs_dir, f"chunks_log_{timestamp}.json")
         self.log_data = {
             "script_run": {
             "timestamp": datetime.datetime.now().isoformat(),
@@ -223,7 +227,7 @@ class ZillizSearchTool:
         desirable for policy analysis where document context matters.
         """
         # Extract potential keywords from the query
-        keywords = [word for word in query.split() if len(word) > 3]
+        keywords = [word for word in query.split() if len(word) > 3 and word not in ['that', 'this', 'with', 'from', 'have', 'were', 'they', 'their']]
         
         # Create text match filters for all searchable fields
         text_match_filters = []
@@ -346,7 +350,7 @@ class ZillizSearchTool:
         
         return formatted_results
     
-def main():
+def example_usage():
     # Initialize the search tool with both Voyage and OpenAI API keys
     search_tool = ZillizSearchTool(
         voyage_api_key=VOYAGE_API_KEY,
@@ -418,6 +422,64 @@ def main():
     
     except Exception as e:
         print(f"Error in main process: {e}")
+
+
+def main() -> None:
+    """Command-line interface for running semantic or hybrid searches.
+    
+    Usage:
+        python Zilliz_src/zilliz_search.py "what are reproductive health benefits" h --limit 10 --filter "file_type == 'pdf'"
+    """
+
+
+    parser = argparse.ArgumentParser(
+        description="Run semantic (s) or hybrid (h) searches against the Zilliz collection."
+    )
+    parser.add_argument("query", help="Search query to execute. Wrap in quotes to preserve spaces.")
+    parser.add_argument("mode", nargs="?", choices=["s", "h"], default="h", help="Search mode: 's' for semantic, 'h' for hybrid (default).")
+    parser.add_argument("--limit", type=int, default=5, help="Number of results to return (default: 5).")
+    parser.add_argument("--filter", dest="metadata_filter", help="Optional metadata filter expression to apply to the search.")
+
+    args = parser.parse_args()
+
+    search_tool = ZillizSearchTool(
+        voyage_api_key=VOYAGE_API_KEY,
+        zilliz_uri=ZILLIZ_CLOUD_URI,
+        zilliz_token=ZILLIZ_CLOUD_TOKEN,
+    )
+
+    if args.mode == "h":
+        results = search_tool.hybrid_search_chunks_API(
+            collection_name=COLLECTION_NAME,
+            query=args.query,
+            limit=args.limit,
+            metadata_filter=args.metadata_filter,
+        )
+        search_type = "Hybrid"
+    else:
+        results = search_tool.search_chunks(
+            collection_name=COLLECTION_NAME,
+            query=args.query,
+            limit=args.limit,
+            metadata_filter=args.metadata_filter,
+        )
+        search_type = "Semantic"
+
+    print(f"\n{search_type} search results for query: '{args.query}'\n")
+    if not results:
+        print("No results found.")
+        return
+
+    for index, result in enumerate(results, start=1):
+        print(f"Result {index}:")
+        print(f"  Chunk summary: {result.get('chunk_summary', '')}")
+        print(f"  Section: {result.get('section_title', '')}")
+        print(f"  Document: {result.get('filename', '')}")
+        if result.get("semantic_keywords"):
+            keywords_preview = ", ".join(result["semantic_keywords"][:5])
+            print(f"  Keywords: {keywords_preview}")
+        print(f"  Score: {result.get('score', 0.0):.4f}")
+        print("---")
 
 if __name__ == "__main__":
     main()

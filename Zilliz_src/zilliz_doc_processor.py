@@ -5,13 +5,14 @@ from pathlib import Path
 import time
 from typing import List, Dict, Any, Optional, Tuple
 from tqdm import tqdm
+import argparse
 
 # For document processing
 import docx
 import fitz
 import re
 from langchain_openai import ChatOpenAI
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -24,6 +25,12 @@ import hashlib  # For SHA-256 hash calculation
 LLM_SUMMARISER_MODEL = "gpt-3.5-turbo"  # Model for generating summaries. can switch up to gpt-4o-mini when doing evals
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
+
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=CHUNK_SIZE,
+    chunk_overlap=CHUNK_OVERLAP,
+    length_function=len,
+)   
 
 # === PATH SETUP ===
 # UNUSUAL: We manipulate sys.path to allow imports from parent directories
@@ -43,11 +50,7 @@ class DocumentProcessor:
         Args:
             openai_api_key: API key for OpenAI (used for generating summaries)
         """
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=CHUNK_SIZE,
-            chunk_overlap=CHUNK_OVERLAP,
-            length_function=len,
-        )
+        self.text_splitter = text_splitter
         
         # Initialize LLM for generating summaries
         self.llm = ChatOpenAI(
@@ -57,7 +60,9 @@ class DocumentProcessor:
             request_timeout=120,  # Increase from default 30s to 60s to 120s
             max_retries=5        # Add automatic retries
         )
-    
+        
+        print(f"DocumentProcessor object initialized with LLM model {LLM_SUMMARISER_MODEL}")
+
     def extract_text_from_file(self, file_path: Path) -> str:
         """
         Extract text content from different file types.
@@ -479,3 +484,31 @@ class DocumentProcessor:
         
         print(f"=== TOTAL RAW CHUNKS: {total_raw_chunks} ===")
         return total_raw_chunks
+    
+def main(cli_args: Optional[List[str]] = None) -> None:
+    """CLI entry point for processing a directory of documents."""
+
+    parser = argparse.ArgumentParser(
+        description="Process documents in a directory into enriched chunks."
+    )
+    parser.add_argument(
+        "docs_path",
+        nargs="?",
+        default="Temp_docs_list",
+        help="Directory containing documents to process (default: Temp_docs_list)",
+    )
+
+    args = parser.parse_args(cli_args)
+
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise EnvironmentError(
+            "OPENAI_API_KEY environment variable must be set to process documents."
+        )
+
+    processor = DocumentProcessor(openai_api_key=openai_api_key)
+    processor.process_directory(args.docs_path)
+
+
+if __name__ == "__main__":
+    main()

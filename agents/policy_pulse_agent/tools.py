@@ -481,13 +481,12 @@ def _retrieve_context_zilliz(query: str,
     try:
         # Create fresh ZillizSearchTool instance
         search_tool = get_zilliz_client()      
-        # Try hybrid search first (TEXT_MATCH + semantic ranking)
-        # This searches across text, chunk_summary, section_title, and semantic_keywords fields
+        
         hybrid_results = search_tool.hybrid_search_chunks_API(
             collection_name=collection,
             query=query,
             limit=min(max_chunks, 3),
-            metadata_filter=None  # No file_type filtering - focus on content relevance
+            metadata_filter=None  # 
         )
         
         # Fallback to pure semantic search if hybrid returns no results
@@ -657,7 +656,6 @@ __all__ = [
     'search_with_exa', 
     'search_with_serpapi',
     'search_with_google',
-    '_retrieve_context',
     'get_search_tool',
     'search_all_providers'
 ]

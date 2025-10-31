@@ -8,7 +8,7 @@ project_root = os.path.join(current_dir, '..')
 sys.path.insert(0, os.path.abspath(project_root))
 
 
-from Zilliz_src.zilliz_embedding import ZillizMigrationTool
+from Zilliz_src.zilliz_indexer import ZillizMigrationTool
 
 load_dotenv()
 
