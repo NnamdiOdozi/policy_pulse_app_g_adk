@@ -1,16 +1,13 @@
 import os
 import sys
-import json
 import datetime
 from pathlib import Path
-import time
-from typing import List, Dict, Any, Optional, Tuple
-from tqdm import tqdm
+from typing import List, Dict, Any, Optional
 import argparse
 
 # For embeddings and vector database
-import voyageai
-from pymilvus import MilvusClient, DataType, Function, FunctionType, AnnSearchRequest, RRFRanker
+from pymilvus import  AnnSearchRequest, RRFRanker
+import Zilliz_src.client_factory as client_factory
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -72,20 +69,17 @@ sys.path.insert(0, os.path.abspath(project_root))
 
 
 class ZillizSearchTool:
-    def __init__(self, voyage_api_key: str, zilliz_uri: str, zilliz_token: str):
+    def __init__(self, voyage_client, milvus_client):
         """
-        Initialize the search wth API keys and connection details.
+        Initialize ZillizSearchTool with injected Voyage client.
         
         Args:
-            voyage_api_key: API key for Voyage AI
-            zilliz_uri: URI for Zilliz Cloud instance
-            zilliz_token: Token for Zilliz Cloud authentication
+            voyage_client: Pre-configured Voyage AI client
         """
-        self.voyage_client = voyageai.Client(api_key=voyage_api_key)
-        self.zilliz_client = MilvusClient(
-            uri=zilliz_uri,
-            token=zilliz_token
-        )
+        self.voyage_client = voyage_client
+        
+        # Milvus client created internally (same company as Zilliz)
+        self.zilliz_client = milvus_client
         
               
         # Create logs directory if it doesn't exist
@@ -442,12 +436,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    search_tool = ZillizSearchTool(
-        voyage_api_key=VOYAGE_API_KEY,
-        zilliz_uri=ZILLIZ_CLOUD_URI,
-        zilliz_token=ZILLIZ_CLOUD_TOKEN,
-    )
+    voyage_client = client_factory.create_voyage_client(api_key=VOYAGE_API_KEY)
+    milvus_client = client_factory.create_milvus_client()
 
+    search_tool = ZillizSearchTool(voyage_client, milvus_client)
+        
     if args.mode == "h":
         results = search_tool.hybrid_search_chunks_API(
             collection_name=COLLECTION_NAME,

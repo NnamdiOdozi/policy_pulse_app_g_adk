@@ -19,9 +19,11 @@ from dotenv import load_dotenv
 load_dotenv()
 import hashlib  # For SHA-256 hash calculation
 
+from Zilliz_src import client_factory
+
 # Configuration
 
-#PENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "your-openai-api-key-here")  # For generating summaries
+
 LLM_SUMMARISER_MODEL = "gpt-3.5-turbo"  # Model for generating summaries. can switch up to gpt-4o-mini when doing evals
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
@@ -43,23 +45,17 @@ sys.path.insert(0, os.path.abspath(project_root))
 class DocumentProcessor:
     """Process documents into chunks with rich metadata."""
     
-    def __init__(self, openai_api_key: str):
+    def __init__(self, openai_client):
         """
-        Initialize the document processor.
+         Initialize DocumentProcessor with injected OpenAI client.
         
         Args:
-            openai_api_key: API key for OpenAI (used for generating summaries)
+            openai_client: Pre-configured ChatOpenAI client
         """
         self.text_splitter = text_splitter
         
         # Initialize LLM for generating summaries
-        self.llm = ChatOpenAI(
-            model=LLM_SUMMARISER_MODEL,
-            temperature=0.0,
-            api_key=openai_api_key,
-            request_timeout=120,  # Increase from default 30s to 60s to 120s
-            max_retries=5        # Add automatic retries
-        )
+        self.llm = openai_client
         
         print(f"DocumentProcessor object initialized with LLM model {LLM_SUMMARISER_MODEL}")
 
@@ -500,13 +496,9 @@ def main(cli_args: Optional[List[str]] = None) -> None:
 
     args = parser.parse_args(cli_args)
 
-    openai_api_key = os.environ.get("OPENAI_API_KEY")
-    if not openai_api_key:
-        raise EnvironmentError(
-            "OPENAI_API_KEY environment variable must be set to process documents."
-        )
+    openai_client = client_factory.create_openai_client()
 
-    processor = DocumentProcessor(openai_api_key=openai_api_key)
+    processor = DocumentProcessor(openai_client=openai_client)
     processor.process_directory(args.docs_path)
 
 

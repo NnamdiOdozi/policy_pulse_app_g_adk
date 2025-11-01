@@ -6,6 +6,7 @@ from pathlib import Path
 import time
 from typing import List, Dict, Any, Optional, Tuple
 from tqdm import tqdm
+import argparse
 
 import logging
 from logging.handlers import RotatingFileHandler
@@ -14,6 +15,8 @@ from logging.handlers import RotatingFileHandler
 import voyageai
 from pymilvus import MilvusClient, DataType, Function, FunctionType, AnnSearchRequest, RRFRanker
 
+from Zilliz_src import client_factory
+from Zilliz_src.doc_processor import DocumentProcessor
 
 # === LOGGING SETUP ===
 # Create logs directory if it doesn't exist
@@ -102,27 +105,19 @@ TRADE-OFFS:
 - Benefit: Consistent search behavior, rich LLM context, clean user display
 """
 
-class ZillizIndexingTool:
-    def __init__(self, voyage_api_key: str, zilliz_uri: str, zilliz_token: str, openai_api_key: str = None):
+class ZillizIndexer:
+    def __init__(self, voyage_client, milvus_client, document_processor):
         """
-        Initialize the indexing tool with API keys and connection details. It creates an instance of the DocumentProcessor class to load docs, chunk them and enrich them
-
-        Args:
-            voyage_api_key: API key for Voyage AI
-            zilliz_uri: URI for Zilliz Cloud instance
-            zilliz_token: Token for Zilliz Cloud authentication
-            openai_api_key: Optional API key for OpenAI (for summarization)
-        """
-        self.voyage_client = voyageai.Client(api_key=voyage_api_key)
-        self.zilliz_client = MilvusClient(
-            uri=zilliz_uri,
-            token=zilliz_token
-        )
+        Initialize ZillizIndexer with injected clients.
         
-        self.document_processor = None
-        if openai_api_key:
-            from Zilliz_src.doc_processor import DocumentProcessor  # Adjust import as needed
-            self.document_processor = DocumentProcessor(openai_api_key)
+        Args:
+            voyage_client: Pre-configured Voyage AI client
+            document_processor: Optional pre-configured DocumentProcessor
+        """
+        self.voyage_client = voyage_client
+        # Milvus client created internally (same company as Zilliz)
+        self.zilliz_client = milvus_client
+        self.document_processor = document_processor
         
         # Create logs directory if it doesn't exist
         LOG_DIR_NAME = "embedding_logs"
@@ -710,15 +705,21 @@ Source: {chunk.get('filename', '')}"""
         
 def main():
     # Initialize the indexing tool with both Voyage and OpenAI API keys
-    indexing_tool = ZillizIndexingTool(
-        voyage_api_key=VOYAGE_API_KEY,
-        zilliz_uri=ZILLIZ_CLOUD_URI,
-        zilliz_token=ZILLIZ_CLOUD_TOKEN,
-        openai_api_key=OPENAI_API_KEY
+
+    # Create clients once
+    voyage_client = client_factory.create_voyage_client()
+    openai_client = client_factory.create_openai_client()
+    milvus_client = client_factory.create_milvus_client()
+    document_processor = DocumentProcessor(openai_client=openai_client)
+
+    indexing_tool = ZillizIndexer(
+        voyage_client,
+        milvus_client,
+        document_processor
     )
     
     # Test raw chunk count first
-    raw_count = indexing_tool.document_processor.test_raw_chunk_count(DOCS_DIRECTORY)
+    raw_count = document_processor.test_raw_chunk_count(DOCS_DIRECTORY)
 
     # Process all documents in the directory and insert into Zilliz
     try:

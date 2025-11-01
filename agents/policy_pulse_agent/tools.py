@@ -20,6 +20,8 @@ sys.path.insert(0, os.path.abspath(project_root))
 from cachetools import cached, TTLCache
 import hashlib
 from Zilliz_src.search import ZillizSearchTool
+from Zilliz_src import client_factory
+from exa_py import Exa
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -28,17 +30,18 @@ load_dotenv()
 from functools import lru_cache
 
 @lru_cache(maxsize=1)
-def _get_cached_zilliz_client():
-    """Create and cache a single ZillizSearchTool instance."""
-    return ZillizSearchTool(
-        voyage_api_key=os.getenv("VOYAGE_API_KEY"),
-        zilliz_uri=os.getenv("ZILLIZ_CLOUD_URI"),
-        zilliz_token=os.getenv("ZILLIZ_API_KEY"),
-    )
+def _get_cached_search_clients():
+    """Cache Voyage and Zilliz clients for search. """
+    voyage_client = client_factory.create_voyage_client()
+    zilliz_client = client_factory.create_zilliz_client(voyage_client)
+    return voyage_client, zilliz_client
 
 def get_zilliz_client():
-    """Get the cached ZillizMigrationTool instance."""
-    return _get_cached_zilliz_client()
+    """Get ZillizSearchTool with cached Voyage client."""
+    voyage_client, zilliz_client = _get_cached_search_clients()
+    return ZillizSearchTool(voyage_client, zilliz_client)
+
+
 
 # ========== CORRECT ADK FUNCTION TOOLS ==========
 # Following ADK documentation: functions should be standalone, serializable
@@ -294,16 +297,8 @@ def search_with_exa(query: str, max_results: int = 5) -> Dict[str, Any]:
         Dict[str, Any]: Search results with titles, URLs, content, and metadata
     """
     try:
-        api_key = os.getenv("EXA_API_KEY")
-        if not api_key:
-            return {"error": "EXA_API_KEY not found in environment variables"}
+        exa = Exa(api_key=os.getenv("EXA_API_KEY"))  # I tried caching the Exa lru cache but latency increased by as much as 500ms and so i reverted
         
-        try:
-            from exa_py import Exa
-        except ImportError:
-            return {"error": "exa_py package not installed. Run: pip install exa_py"}
-        
-        exa = Exa(api_key=api_key)
         
         # CRITICAL: Normalize max_results to standard values
         # This improves cache hit rate
@@ -485,7 +480,7 @@ def _retrieve_context_zilliz(query: str,
         hybrid_results = search_tool.hybrid_search_chunks_API(
             collection_name=collection,
             query=query,
-            limit=min(max_chunks, 3),
+            limit=min(max_chunks, 5),
             metadata_filter=None  # 
         )
         
@@ -494,7 +489,7 @@ def _retrieve_context_zilliz(query: str,
             semantic_results = search_tool.search_chunks(
                 collection_name=collection,
                 query=query,
-                limit=min(max_chunks, 3),
+                limit=min(max_chunks, 5),
                 metadata_filter=None
             )
             results = semantic_results
