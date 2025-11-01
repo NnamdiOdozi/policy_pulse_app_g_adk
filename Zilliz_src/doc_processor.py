@@ -1,7 +1,6 @@
 import os
 import sys
 import datetime
-from pathlib import Path
 import time
 from typing import List, Dict, Any, Optional, Tuple
 from tqdm import tqdm
@@ -11,7 +10,6 @@ import argparse
 import docx
 import fitz
 import re
-from langchain_openai import ChatOpenAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
 
 # Load environment variables
@@ -19,7 +17,14 @@ from dotenv import load_dotenv
 load_dotenv()
 import hashlib  # For SHA-256 hash calculation
 
-from Zilliz_src import client_factory
+from pathlib import Path
+
+# Calculate project root based on file location
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent  # Adjust levels as needed
+sys.path.insert(0, str(project_root))
+
+import client_factory
 
 # Configuration
 
@@ -34,11 +39,12 @@ text_splitter = RecursiveCharacterTextSplitter(
     length_function=len,
 )   
 
-# === PATH SETUP ===
-# UNUSUAL: We manipulate sys.path to allow imports from parent directories
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.join(current_dir, '..') 
-sys.path.insert(0, os.path.abspath(project_root))
+from pathlib import Path
+
+# Calculate project root based on file location
+current_file = Path(__file__).resolve()
+project_root = current_file.parent  # Adjust levels as needed
+sys.path.insert(0, str(project_root))
 
 
 # Now include the DocumentProcessor class

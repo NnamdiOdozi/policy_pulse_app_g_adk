@@ -12,15 +12,17 @@ from google.adk.agents import Agent
 from google.adk.tools.agent_tool import AgentTool
 from google.adk.tools import  google_search
 
-# Add path manipulation
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.join(current_dir, '..' , '..')
-sys.path.insert(0, os.path.abspath(project_root))
+from pathlib import Path
+
+# Calculate project root based on file location
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent.parent  # Adjust levels as needed
+sys.path.insert(0, str(project_root))
 
 from cachetools import cached, TTLCache
 import hashlib
 from Zilliz_src.search import ZillizSearchTool
-from Zilliz_src import client_factory
+import client_factory
 from exa_py import Exa
 
 # Load environment variables
@@ -31,15 +33,15 @@ from functools import lru_cache
 
 @lru_cache(maxsize=1)
 def _get_cached_search_clients():
-    """Cache Voyage and Zilliz clients for search. """
+    """Cache Voyage and Milvus clients for search. """
     voyage_client = client_factory.create_voyage_client()
-    zilliz_client = client_factory.create_zilliz_client(voyage_client)
-    return voyage_client, zilliz_client
+    milvus_client = client_factory.create_milvus_client()
+    return voyage_client, milvus_client
 
 def get_zilliz_client():
     """Get ZillizSearchTool with cached Voyage client."""
-    voyage_client, zilliz_client = _get_cached_search_clients()
-    return ZillizSearchTool(voyage_client, zilliz_client)
+    voyage_client, milvus_client = _get_cached_search_clients()
+    return ZillizSearchTool(voyage_client, milvus_client)
 
 
 

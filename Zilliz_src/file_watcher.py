@@ -13,6 +13,7 @@ To stop: Press Ctrl+C
 """
 
 import os
+import sys
 import time
 from pathlib import Path
 from datetime import datetime
@@ -20,9 +21,16 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileMovedEvent
 from dotenv import load_dotenv
 
-# Import your existing Zilliz classes
-from Zilliz_src.indexer import ZillizMigrationTool
+# === PATH SETUP ===
+# UNUSUAL: We manipulate sys.path to allow imports from parent directories
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(current_dir, '..') 
+sys.path.insert(0, os.path.abspath(project_root))
 
+# Import your existing Zilliz classes
+from Zilliz_src.indexer import ZillizIndexer
+from Zilliz_src.doc_processor import DocumentProcessor
+import client_factory 
 # Load environment variables
 load_dotenv()
 
@@ -32,14 +40,15 @@ COLLECTION_NAME = "WAE_docs_voyage_3_large"
 DEBOUNCE_SECONDS = 2  # Wait 2 seconds after last event before processing
 SUPPORTED_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.odp', '.txt', '.md'}
 
-# Initialize Zilliz client (reuses your existing setup)
-zilliz_client = ZillizMigrationTool(
-    voyage_api_key=os.getenv("VOYAGE_API_KEY"),
-    zilliz_uri=os.getenv("ZILLIZ_CLOUD_URI"),
-    zilliz_token=os.getenv("ZILLIZ_API_KEY"),
-    openai_api_key=os.getenv("OPENAI_API_KEY")
-)
 
+# Create clients once
+voyage_client = client_factory.create_voyage_client()
+openai_client = client_factory.create_openai_client()
+milvus_client = client_factory.create_milvus_client()
+document_processor = DocumentProcessor(openai_client=openai_client)
+# Initialize Zilliz client (reuses your existing setup)
+zilliz_client = ZillizIndexer(voyage_client, milvus_client, document_processor)
+   
 class DocumentEventHandler(FileSystemEventHandler):
     """Handles file system events and manages debouncing."""
     

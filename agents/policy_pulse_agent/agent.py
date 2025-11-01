@@ -70,12 +70,12 @@ from typing import Optional
 from sqlalchemy import create_engine  # For connection pooling
 from sqlalchemy.pool import QueuePool # Manages DB connection pool
 
-# === PATH SETUP ===
-# UNUSUAL: We manipulate sys.path to allow imports from parent directories
-# WHY: Streamlit runs from front_end/, but we need to import from agents/
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.join(current_dir, '..' , '..')
-sys.path.insert(0, os.path.abspath(project_root))
+from pathlib import Path
+
+# Calculate project root based on file location
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent.parent  # Adjust levels as needed
+sys.path.insert(0, str(project_root))
 
 # === IMPORT SUB-AGENTS ===
 # Each sub-agent is defined in its own folder with specialized instructions

@@ -12,10 +12,17 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 # For embeddings and vector database
-import voyageai
-from pymilvus import MilvusClient, DataType, Function, FunctionType, AnnSearchRequest, RRFRanker
 
-from Zilliz_src import client_factory
+from pymilvus import MilvusClient, DataType, Function, FunctionType
+
+from pathlib import Path
+
+# Calculate project root based on file location
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent  # Adjust levels as needed
+sys.path.insert(0, str(project_root))
+
+import client_factory
 from Zilliz_src.doc_processor import DocumentProcessor
 
 # === LOGGING SETUP ===

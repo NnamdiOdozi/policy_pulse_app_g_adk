@@ -7,7 +7,17 @@ import argparse
 
 # For embeddings and vector database
 from pymilvus import  AnnSearchRequest, RRFRanker
-import Zilliz_src.client_factory as client_factory
+
+# === PATH SETUP ===
+# UNUSUAL: We manipulate sys.path to allow imports from parent directories
+from pathlib import Path
+
+# Calculate project root based on file location
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent  # Adjust levels as needed
+sys.path.insert(0, str(project_root))
+
+import client_factory
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -436,7 +446,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    voyage_client = client_factory.create_voyage_client(api_key=VOYAGE_API_KEY)
+    voyage_client = client_factory.create_voyage_client()
     milvus_client = client_factory.create_milvus_client()
 
     search_tool = ZillizSearchTool(voyage_client, milvus_client)
