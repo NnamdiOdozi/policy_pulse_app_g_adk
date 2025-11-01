@@ -22,7 +22,7 @@ current_file = Path(__file__).resolve()
 project_root = current_file.parent.parent  # Adjust levels as needed
 sys.path.insert(0, str(project_root))
 
-import client_factory
+import Utils.client_factory as client_factory
 from Zilliz_src.doc_processor import DocumentProcessor
 
 # === LOGGING SETUP ===

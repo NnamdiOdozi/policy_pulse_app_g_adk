@@ -22,7 +22,7 @@ sys.path.insert(0, str(project_root))
 from cachetools import cached, TTLCache
 import hashlib
 from Zilliz_src.search import ZillizSearchTool
-import client_factory
+import Utils.client_factory as client_factory
 from exa_py import Exa
 
 # Load environment variables

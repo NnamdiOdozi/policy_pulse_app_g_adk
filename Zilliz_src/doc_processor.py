@@ -24,11 +24,9 @@ current_file = Path(__file__).resolve()
 project_root = current_file.parent.parent  # Adjust levels as needed
 sys.path.insert(0, str(project_root))
 
-import client_factory
+import Utils.client_factory as client_factory
 
 # Configuration
-
-
 LLM_SUMMARISER_MODEL = "gpt-3.5-turbo"  # Model for generating summaries. can switch up to gpt-4o-mini when doing evals
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
@@ -38,14 +36,6 @@ text_splitter = RecursiveCharacterTextSplitter(
     chunk_overlap=CHUNK_OVERLAP,
     length_function=len,
 )   
-
-from pathlib import Path
-
-# Calculate project root based on file location
-current_file = Path(__file__).resolve()
-project_root = current_file.parent  # Adjust levels as needed
-sys.path.insert(0, str(project_root))
-
 
 # Now include the DocumentProcessor class
 class DocumentProcessor:

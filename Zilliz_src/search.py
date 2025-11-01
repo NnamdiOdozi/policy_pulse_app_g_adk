@@ -17,7 +17,7 @@ current_file = Path(__file__).resolve()
 project_root = current_file.parent.parent  # Adjust levels as needed
 sys.path.insert(0, str(project_root))
 
-import client_factory
+import Utils.client_factory as client_factory
 
 # Load environment variables
 from dotenv import load_dotenv

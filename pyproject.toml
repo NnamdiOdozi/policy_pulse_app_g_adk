@@ -53,3 +53,12 @@ dependencies = [
     "litellm==1.78",
     
 ]
+
+[build-system]
+requires = ["setuptools>=64.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["Zilliz_src*", "old_pulse*", "front_end*", "api*", "agents*", "Utils*"]
+exclude = ["tests*", "docs*", "*.egg-info", "build*", "__pycache__"]

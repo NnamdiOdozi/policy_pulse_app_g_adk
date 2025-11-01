@@ -1,0 +1,256 @@
+# Cache Data Privacy - Critical Security Issue
+**Policy Pulse Application**
+
+**Status:** 🚨 CRITICAL - Blocks production deployment  
+**Priority:** P0  
+**Estimated Fix Time:** 2-3 hours
+
+---
+
+## The Problem
+
+Current cache implementation in `agents/policy_pulse_agent/tools.py` uses **module-level shared caches** that leak data between users and companies.
+
+```python
+# CURRENT (VULNERABLE):
+tavily_cache = TTLCache(maxsize=50, ttl=3600)  # Shared by ALL users!
+search_cache = TTLCache(maxsize=50, ttl=1800)  # Shared by ALL users!
+
+def _cache_key(query: str, collection: str) -> str:
+    return hashlib.sha256(f"{query}:{collection}".encode()).hexdigest()
+    # No user_id or company_id in key!
+```
+
+**Attack Scenario:**
+- 10:00 AM: Alice (Company A) searches "maternity policy" → Cached
+- 10:05 AM: Bob (Company B) searches "maternity policy" → Gets Alice's Company A results!
+
+**Impact:** GDPR violation, data breach, cross-tenant data leakage.
+
+---
+
+## Why This Happens
+
+### Python Process Memory Model
+
+**Development (Streamlit):**
+```
+Single Process → All users share same cache instance
+```
+
+**Production (Multiple Workers):**
+```
+Worker 1 → Users A, B, C share cache
+Worker 2 → Users D, E, F share cache
+Worker 3 → Users G, H share cache
+```
+
+Even with multiple workers/containers, users within the same worker share caches.
+
+---
+
+## The Multi-Tenancy Factor
+
+Your database schema shows multi-tenant architecture with `company_id`:
+
+```sql
+CREATE TABLE documents (
+  id uuid,
+  company_id uuid,  -- Company-scoped data
+  ...
+);
+
+CREATE POLICY "Users see own company documents"
+USING (company_id IN (SELECT company_id FROM profiles WHERE user_id = auth.uid()));
+```
+
+**Key Decision:** Should cache keys use `user_id` or `company_id`?
+
+**Answer:** Depends on what's being cached.
+
+---
+
+## Solutions
+
+### For RAG/Document Search: Use `company_id`
+
+**Why:** Documents are company-scoped, not user-scoped. Two users at the same company searching "benefits" should get the same cached results.
+
+```python
+def _cache_key_rag(query: str, company_id: str, collection: str) -> str:
+    key_string = f"{company_id}:{query}:{collection}"
+    return hashlib.sha256(key_string.encode()).hexdigest()
+```
+
+**Benefits:**
+- ✅ Higher cache hit rate (users share within company)
+- ✅ Tenant isolation (Company A ≠ Company B)
+- ✅ Matches database RLS policy
+
+### For Web Search: Use `user_id`
+
+**Why:** External search results could be user-specific or location-based.
+
+```python
+def _cache_key_web(query: str, user_id: str) -> str:
+    key_string = f"{user_id}:{query}"
+    return hashlib.sha256(key_string.encode()).hexdigest()
+```
+
+**Benefits:**
+- ✅ Complete user isolation (safest option)
+- ✅ No cross-user data leakage
+
+### For Production Scale: Use Redis
+
+**Problem:** In-process caches don't sync across workers/containers.
+
+**Solution:** Use Redis with namespaced keys:
+- `rag:{company_id}:{hash}` for document search
+- `web:{user_id}:{hash}` for web search
+
+**When to use Redis:**
+- Multiple Gunicorn/Uvicorn workers (>1)
+- Horizontal scaling with multiple containers
+- High traffic (>100 requests/min)
+
+**When in-process is sufficient:**
+- Development environments
+- Single worker deployments
+- Low traffic applications
+
+---
+
+## Implementation Summary
+
+### Step 1: Update Cache Key Functions
+Add specialized cache key generators for different data types:
+- `_cache_key_rag(query, company_id, collection)` 
+- `_cache_key_web(query, user_id)`
+
+### Step 2: Update Search Functions
+Modify function signatures to require isolation parameters:
+- `search_zilliz_rag(query, company_id, ...)` 
+- `search_with_tavily_faq(query, user_id, ...)`
+
+### Step 3: Extract Context in Agent
+Get `user_id` and `company_id` from ADK session context:
+
+```python
+from google.adk.agents.callback_context import CallbackContext
+
+def get_user_context() -> tuple[str, str]:
+    context = CallbackContext.get_current()
+    user_id = context.session.user_id
+    
+    # Query database for company_id
+    cur.execute("SELECT company_id FROM profiles WHERE user_id = %s", (user_id,))
+    company_id = cur.fetchone()['company_id']
+    
+    return user_id, company_id
+```
+
+### Step 4: Add Tenant Filtering to Queries
+Critical for Zilliz RAG search:
+
+```python
+results = search_tool.hybrid_search_chunks_API(
+    collection_name=collection,
+    query=query,
+    metadata_filter=f'company_id == "{company_id}"'  # Tenant isolation!
+)
+```
+
+---
+
+## Decision Matrix
+
+| Cache Type | Use This Key | Reasoning |
+|------------|--------------|-----------|
+| Zilliz RAG | `company_id` | Documents are company-scoped |
+| Tavily Web Search | `user_id` | External data, safest to isolate |
+| Exa Search | `user_id` | External data, safest to isolate |
+| API Clients (Voyage, Milvus) | Shared (no key) | No user data, just connections |
+
+## Trade-offs
+
+| Storage | Setup | Scalability | Hit Rate | Best For |
+|---------|-------|-------------|----------|----------|
+| In-process TTLCache | Simple | Single worker | Per-worker | Development |
+| Redis/Memcached | Moderate | Multi-worker | Shared | Production |
+
+---
+
+## Testing Requirements
+
+**Test 1: Company Isolation**
+- User A (Company A) searches "maternity leave"
+- User B (Company B) searches "maternity leave"  
+- Result: Different cache keys, different results
+
+**Test 2: Within-Company Sharing**
+- User A (Company A) searches "benefits"
+- User C (Company A) searches "benefits"
+- Result: Cache hit, same results
+
+**Test 3: User Isolation for Web**
+- User A searches "fertility clinics"
+- User B searches "fertility clinics"
+- Result: Different cache keys (user-scoped)
+
+---
+
+## Production Checklist
+
+### Immediate (MVP - Blocks Release):
+- [ ] Update cache key functions with `company_id`/`user_id`
+- [ ] Add parameters to all search functions
+- [ ] Implement `get_user_context()` in agent
+- [ ] Add `company_id` filter to Zilliz queries
+- [ ] Write and pass isolation tests
+- [ ] Security review and penetration test
+
+### Phase 2 (Scale):
+- [ ] Evaluate Redis need based on worker count
+- [ ] Migrate to Redis if using >1 worker
+- [ ] Monitor cache hit rates in production
+
+---
+
+## Key Security Risks
+
+1. **Cross-tenant data leakage** (Current state) - CRITICAL ❌
+2. **GDPR Article 32 violation** - Data not properly secured
+3. **Cache poisoning** - Mitigated by tenant scoping ✅
+4. **Memory exhaustion** - Mitigated by TTLCache maxsize ✅
+
+---
+
+## Your `user_id` is Safe
+
+Your auth implementation generates cryptographically unique IDs:
+```python
+user_id = f"user_{secrets.token_hex(8)}"  # 2^64 combinations
+```
+
+Collision probability: ~1 in 18 quintillion. No risk of accidental duplicates.
+
+---
+
+## Bottom Line
+
+**Current state:** Major privacy vulnerability - User A can see User B's cached data  
+**Fix complexity:** Medium (2-3 hours)  
+**Must fix before:** Production deployment  
+**Recommended approach:** 
+1. Use `company_id` for RAG (better performance)
+2. Use `user_id` for web search (maximum safety)
+3. Consider Redis when scaling beyond single worker
+
+---
+
+**Document Owner:** Development Team  
+**Next Action:** Implement fixes in `tools.py` per Step 1-4 above  
+**References:** 
+- OWASP Broken Access Control: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+- GDPR Article 32: https://gdpr-info.eu/art-32-gdpr/

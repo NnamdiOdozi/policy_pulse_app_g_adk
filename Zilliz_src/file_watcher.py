@@ -30,13 +30,13 @@ sys.path.insert(0, os.path.abspath(project_root))
 # Import your existing Zilliz classes
 from Zilliz_src.indexer import ZillizIndexer
 from Zilliz_src.doc_processor import DocumentProcessor
-import client_factory 
+import Utils.client_factory as client_factory 
 # Load environment variables
 load_dotenv()
 
-# Configuration - matches your existing setup
+# Configuration - matches your existing setup - the watch directory and the collection name should go into a config file!!!
 WATCH_DIRECTORY = "Policy Pulse + AVE collab"
-COLLECTION_NAME = "WAE_docs_voyage_3_large"
+COLLECTION_NAME = "WAE_2_docs_voyage_3_large"
 DEBOUNCE_SECONDS = 2  # Wait 2 seconds after last event before processing
 SUPPORTED_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.odp', '.txt', '.md'}
 
@@ -47,7 +47,7 @@ openai_client = client_factory.create_openai_client()
 milvus_client = client_factory.create_milvus_client()
 document_processor = DocumentProcessor(openai_client=openai_client)
 # Initialize Zilliz client (reuses your existing setup)
-zilliz_client = ZillizIndexer(voyage_client, milvus_client, document_processor)
+indexing_client = ZillizIndexer(voyage_client, milvus_client, document_processor)
    
 class DocumentEventHandler(FileSystemEventHandler):
     """Handles file system events and manages debouncing."""
@@ -178,12 +178,12 @@ def process_file_update(file_path):
         file_path_obj = Path(file_path)
         
         # Calculate current file hash
-        current_hash = zilliz_client.document_processor.calculate_file_hash(file_path_obj)
+        current_hash = indexing_client.document_processor.calculate_file_hash(file_path_obj)
         
         print(f"[INFO] Current hash: {current_hash[:16]}...")
         
         # Get stored hash from Zilliz (query any chunk from this file)
-        stored_hash = zilliz_client.get_file_hash(COLLECTION_NAME, str(file_path_obj))
+        stored_hash = indexing_client.get_file_hash(COLLECTION_NAME, str(file_path_obj))
         
         if stored_hash:
             print(f"[INFO] Stored hash: {stored_hash[:16]}...")
@@ -199,7 +199,7 @@ def process_file_update(file_path):
             print(f"[NEW FILE] No existing hash found - processing file")
         
         # Process file (content changed or new file)
-        chunks = zilliz_client.document_processor.process_file(file_path_obj)
+        chunks = indexing_client.document_processor.process_file(file_path_obj)
         
         if not chunks:
             print(f"[WARNING] No chunks generated for {file_path}")
@@ -208,7 +208,7 @@ def process_file_update(file_path):
         print(f"[INFO] Generated {len(chunks)} chunks")
         
         # Insert/update chunks in Zilliz
-        zilliz_client.insert_chunks(
+        indexing_client.insert_chunks(
             collection_name=COLLECTION_NAME,
             chunks=chunks,
             show_progress=False
@@ -240,7 +240,7 @@ def process_file_deletion(file_path):
         filter_expr = f'file_path == "{escaped_path}"'
         
         # Find all chunks for this file
-        results = zilliz_client.zilliz_client.query(
+        results = indexing_client.indexing_client.query(
             collection_name=COLLECTION_NAME,
             filter=filter_expr,
             output_fields=["id"],
@@ -260,7 +260,7 @@ def process_file_deletion(file_path):
         id_list = ", ".join([f'"{id}"' for id in chunk_ids])
         delete_expr = f'id in [{id_list}]'
         
-        zilliz_client.zilliz_client.delete(
+        indexing_client.indexing_client.delete(
             collection_name=COLLECTION_NAME,
             filter=delete_expr
         )
@@ -294,12 +294,12 @@ def process_file_rename(new_path, old_path):
         new_path_str = str(new_path_obj)
         
         # Calculate hash of "new" file (same physical file, possibly moved/renamed)
-        current_hash = zilliz_client.document_processor.calculate_file_hash(new_path_obj)
+        current_hash = indexing_client.document_processor.calculate_file_hash(new_path_obj)
         
         print(f"[INFO] Current hash: {current_hash[:16]}...")
         
         # Get stored hash from old path
-        stored_hash = zilliz_client.get_file_hash(COLLECTION_NAME, old_path_str)
+        stored_hash = indexing_client.get_file_hash(COLLECTION_NAME, old_path_str)
         
         if stored_hash:
             print(f"[INFO] Stored hash: {stored_hash[:16]}...")
@@ -309,7 +309,7 @@ def process_file_rename(new_path, old_path):
                 print(f"[METADATA ONLY] Content unchanged, updating metadata only")
                 
                 # Update all chunks' filename and file_path fields
-                zilliz_client.update_chunks_metadata(
+                indexing_client.update_chunks_metadata(
                     collection_name=COLLECTION_NAME,
                     old_file_path=old_path_str,
                     new_filename=new_filename,
