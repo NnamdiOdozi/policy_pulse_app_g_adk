@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath(project_root))
 
 from cachetools import cached, TTLCache
 import hashlib
-from Zilliz_src.zilliz_search import ZillizSearchTool
+from Zilliz_src.search import ZillizSearchTool
 
 # Load environment variables
 from dotenv import load_dotenv

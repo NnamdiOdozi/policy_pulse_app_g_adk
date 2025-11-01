@@ -121,7 +121,7 @@ class ZillizIndexingTool:
         
         self.document_processor = None
         if openai_api_key:
-            from Zilliz_src.zilliz_doc_processor import DocumentProcessor  # Adjust import as needed
+            from Zilliz_src.doc_processor import DocumentProcessor  # Adjust import as needed
             self.document_processor = DocumentProcessor(openai_api_key)
         
         # Create logs directory if it doesn't exist
