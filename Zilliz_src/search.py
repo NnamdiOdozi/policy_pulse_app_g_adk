@@ -317,10 +317,9 @@ class ZillizSearchTool:
         
         return formatted_results
     
-    def _rerank_results(self, query: str, results: List[Dict[str, Any]], 
-                   top_k: int = None) -> List[Dict[str, Any]]:
+    def _rerank_results(self, query: str, results: List[Dict[str, Any]], top_k: int = None) -> List[Dict[str, Any]]:
         """
-        Rerank search results using FlagReranker.
+        Rerank search results using Voyage reranker API.
         
         Args:
             query: Original search query
@@ -334,23 +333,32 @@ class ZillizSearchTool:
             return results
         
         try:
-            # Prepare query-document pairs for reranker
-            # Use enriched_text if available, otherwise fall back to text
-            pairs = [
-                [query, result.get('enriched_text') or result.get('text', '')]
+            # Extract documents for reranking (use enriched_text if available)
+            documents = [
+                result.get('enriched_text') or result.get('text', '')
                 for result in results
             ]
             
-            # Get reranking scores (takes ~20-40ms for 20 candidates on CPU)
-            rerank_scores = self.reranker.compute_score(pairs)
+            # Get reranker model from environment
+            reranker_model = os.getenv("RERANKER_MODEL", "rerank-2.5-lite")
             
-            # Add rerank scores to results
-            for i, result in enumerate(results):
-                result['rerank_score'] = float(rerank_scores[i])
-                result['original_score'] = result.get('score', 0.0)
+            # Call Voyage rerank API
+            reranking = self.reranker.rerank(
+                query=query,
+                documents=documents,
+                model=reranker_model,
+                top_k=None  # Get all results, we'll slice later
+            )
+            
+            # Map reranked scores back to original results
+            # Voyage returns results sorted by relevance with original indices
+            for rerank_result in reranking.results:
+                idx = rerank_result.index
+                results[idx]['rerank_score'] = rerank_result.relevance_score
+                results[idx]['original_score'] = results[idx].get('score', 0.0)
             
             # Sort by rerank score (descending)
-            reranked = sorted(results, key=lambda x: x['rerank_score'], reverse=True)
+            reranked = sorted(results, key=lambda x: x.get('rerank_score', 0.0), reverse=True)
             
             # Return top_k if specified
             if top_k:
@@ -367,7 +375,7 @@ def example_usage():
 
     voyage_client = client_factory.create_voyage_client()
     milvus_client = client_factory.create_milvus_client()
-    reranker=None
+    #reranker=None
     reranker = client_factory.create_reranker_client() if RERANKER_ENABLED else None
     search_tool = ZillizSearchTool(voyage_client, milvus_client, reranker)
     
@@ -458,8 +466,8 @@ def main() -> None:
 
     voyage_client = client_factory.create_voyage_client()
     milvus_client = client_factory.create_milvus_client()
-    reranker=None
-    #reranker = client_factory.create_reranker_client() if RERANKER_ENABLED else None
+    #reranker=None
+    reranker = client_factory.create_reranker_client() if RERANKER_ENABLED else None
     search_tool = ZillizSearchTool(voyage_client, milvus_client, reranker)
         
     if args.mode == "h":

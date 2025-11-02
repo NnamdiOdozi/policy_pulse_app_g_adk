@@ -15,11 +15,11 @@ from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+from Utils.client_factory import get_db_connection
+
 # Add project root to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
-
-from agents.policy_pulse_agent.agent import get_db_connection
 
 def create_new_session(user_id):
     """

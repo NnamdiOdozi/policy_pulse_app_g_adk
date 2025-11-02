@@ -31,17 +31,20 @@ load_dotenv()
 
 from functools import lru_cache
 
+RERANKER_ENABLED = os.getenv("RERANKER_ENABLED", "false").lower() == "true"
+
 @lru_cache(maxsize=1)
 def _get_cached_search_clients():
     """Cache Voyage and Milvus clients for search. """
     voyage_client = client_factory.create_voyage_client()
     milvus_client = client_factory.create_milvus_client()
-    return voyage_client, milvus_client
+    reranker = client_factory.create_reranker_client() if RERANKER_ENABLED else None
+    return voyage_client, milvus_client, reranker
 
 def get_zilliz_client():
     """Get ZillizSearchTool with cached Voyage client."""
-    voyage_client, milvus_client = _get_cached_search_clients()
-    return ZillizSearchTool(voyage_client, milvus_client)
+    voyage_client, milvus_client, reranker = _get_cached_search_clients()
+    return ZillizSearchTool(voyage_client, milvus_client, reranker)
 
 
 

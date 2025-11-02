@@ -50,8 +50,7 @@ dependencies = [
     "google-maps-addressvalidation>=0.3.20",
     #"modelcontextprotocol>=0.1.0",
     "watchdog>=6.0.0",
-    "litellm==1.78",
-    "flagembedding>=1.2.0", # For reranking
+    "litellm==1.78", # For reranking
 ]
 
 [build-system]

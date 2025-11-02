@@ -18,33 +18,13 @@ UNUSUAL PATTERNS TO NOTE:
 import asyncio
 import os
 import sys
-import subprocess
-import time
+from pathlib import Path
+
+import logging
+import agentops
 
 # Load environment variables
 from dotenv import load_dotenv
-load_dotenv()  # Load environment variables first (DATABASE_URL, API keys, etc.)
-
-import logging
-# Configure detailed logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-# Suppress AgentOps verbose logging
-logging.getLogger('agentops').setLevel(logging.DEBUG)
-
-
-# === OBSERVABILITY SETUP ===
-# AgentOps provides monitoring/tracing for AI agent behavior in production
-# WHY: Helps debug multi-agent interactions and track tool usage
-import agentops
-# Initialize AgentOps before defining agents
-agentops.init(
-    api_key=os.getenv("AGENTOPS_API_KEY"),
-    trace_name="policy-pulse-debug",
-    #auto_start_session=False,  # Disable problematic auto-instrumentation
-    #skip_auto_end_session=True
-)
 
 # === GOOGLE ADK IMPORTS ===
 # Agent Development Kit (ADK) - Google's framework for building agentic systems
@@ -62,96 +42,66 @@ from google.adk.agents.invocation_context import InvocationContext # For plugin 
 
 from google.genai import types
 
-
-import psycopg2
-from psycopg2.extras import RealDictCursor # Returns query results as dictionaries
-import re
-from typing import Optional
-from sqlalchemy import create_engine  # For connection pooling
-from sqlalchemy.pool import QueuePool # Manages DB connection pool
-
-from pathlib import Path
-
-# Calculate project root based on file location
-current_file = Path(__file__).resolve()
-project_root = current_file.parent.parent.parent  # Adjust levels as needed
-sys.path.insert(0, str(project_root))
-
 # === IMPORT SUB-AGENTS ===
 # Each sub-agent is defined in its own folder with specialized instructions
 from agents.policy_pulse_agent.FAQ_agent import FAQ_agent
 from agents.policy_pulse_agent.ReportWriting_agent import ReportWriting_agent
 from agents.policy_pulse_agent.ReportWriting_OpenAI_agent import ReportWriting_OpenAI_agent
 
+# Configure detailed logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Suppress AgentOps verbose logging
+logging.getLogger('agentops').setLevel(logging.DEBUG)
+
+load_dotenv()  # Load environment variables first (DATABASE_URL, API keys, etc.)
 # === CONFIGURATION ===
 APP_NAME = "policy_pulse_app"  # Used to namespace sessions in database
 USER_ID = "default_user"  # Fallback if no user context provided
 
-# === DATABASE SETUP ===
-db_url = os.environ.get("DATABASE_URL")  # e.g. "postgresql://user:pass@host:5432/dbname"
-if not db_url:
-    raise RuntimeError("Please set DATABASE_URL in your .env")
+# === OBSERVABILITY SETUP ===
+# AgentOps provides monitoring/tracing for AI agent behavior in production
+# WHY: Helps debug multi-agent interactions and track tool usage
 
-# Create pool once at module level
-_engine = None
+# Initialize AgentOps before defining agents
+# === AGENTOPS CONFIGURATION ===
+agentops_enabled = os.getenv("AGENTOPS_API_KEY") is not None
 
-class PooledConnection:
-    """Wrapper to make SQLAlchemy connection work with 'with' statements"""
-    def __init__(self, raw_conn):
-        self.raw_conn = raw_conn
-    
-    def __enter__(self):
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.raw_conn.close()
-    
-    def cursor(self):
-        # Force RealDictCursor when creating cursor
-        return self.raw_conn.cursor(cursor_factory=RealDictCursor)
-    
-    def commit(self):
-        return self.raw_conn.commit()
+if agentops_enabled:
+    agentops.init(
+    api_key=os.getenv("AGENTOPS_API_KEY"),
+    # v0.4.x: prevent an auto session so we control lifecycle
+    auto_start_session=False,
+    # keep your labels; in 0.4.x `tags` as list is fine
+    trace_name="policy-pulse-debug",
+    tags=["policy-pulse", "production"],
+    default_tags=[os.getenv("ENVIRONMENT", "development")],
+)
+    logger.info("✅ AgentOps initialized and tracking enabled")
 
-def get_db_connection():
-    """
-    Get database connection with pooling
-        
-    WHY POOLING? Opening/closing DB connections is expensive.
-    Connection pooling maintains a pool of reusable connections.
-    
-    TRADE-OFFS:
-    - More memory usage (keeping connections open)
-    - Better performance (no connection overhead)
-    - Requires proper cleanup (use context managers)
-    
-    POOL SETTINGS:
-    - pool_size=10: Keep 10 connections ready
-    - max_overflow=20: Allow up to 30 total connections under load
-    - pool_recycle=240: Recycle connections every 4 minutes (prevents stale connections)
-    - pool_pre_ping=True: Test connection before use (catches dropped connections)
-    """
-    global _engine
-    if _engine is None:
-        _engine = create_engine(
-            db_url,
-            poolclass=QueuePool,
-            pool_size=5,                    # 5 connections in pool
-            max_overflow=10,                # Up to 15 total connections
-            pool_recycle=240,               # Match your ADK settings
-            pool_pre_ping=True,             # Test connections before use
-            connect_args={
-                "sslmode": "require",
-                "keepalives_idle": 60,
-                "keepalives_interval": 15,
-                "keepalives_count": 5,
-            }
-        )
-   
-    # Return wrapped connection that supports context manager
-    raw_conn = _engine.raw_connection()
-    return PooledConnection(raw_conn)
+    # Test connection
+    try:
+        test_session = agentops.start_session(tags=["initialization-test"])
+        test_session.record(agentops.ActionEvent(
+            action_type="app_startup",
+            params={"app_name": APP_NAME},
+            returns={"status": "ready"}
+        ))
+        test_session.end_session(end_state="Success")
+        logger.info("✅ AgentOps test session completed")
+    except Exception as e:
+        logger.warning(f"⚠️ AgentOps test failed: {e}")
+else:
+    logger.warning("⚠️ AGENTOPS_API_KEY not set - tracking disabled")
 
+# Calculate project root based on file location
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent.parent  # Adjust levels as needed
+sys.path.insert(0, str(project_root))
+
+db_url = os.getenv("DATABASE_URL")  # Full database URL from environment
+# === SESSION SERVICE SETUP ===
 session_service = DatabaseSessionService(
     db_url=db_url,               # your full supabase://…5432/postgres URL
     # 1) test every checkout:

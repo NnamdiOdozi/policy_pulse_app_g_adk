@@ -2,15 +2,15 @@ import hashlib
 import secrets
 import os, sys
 from datetime import datetime
+from dotenv import load_dotenv
+
+from Utils.client_factory import get_db_connection
 
 # Add project root to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from agents.policy_pulse_agent.agent import get_db_connection
-
 # Load environment variables
-from dotenv import load_dotenv
 load_dotenv()
 
 def hash_password(password):
