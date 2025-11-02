@@ -71,6 +71,8 @@ EMBEDDING_DIM = 1024  # Voyage 3 Large dimension
 EMBEDDING_MODEL_NAME = "voyage-3-large"
 
 
+RERANKER_ENABLED = os.getenv("RERANKER_ENABLED", "false").lower() == "true"
+
 # === PATH SETUP ===
 # UNUSUAL: We manipulate sys.path to allow imports from parent directories
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -79,17 +81,24 @@ sys.path.insert(0, os.path.abspath(project_root))
 
 
 class ZillizSearchTool:
-    def __init__(self, voyage_client, milvus_client):
+    def __init__(self, voyage_client, milvus_client, reranker=None):
         """
-        Initialize ZillizSearchTool with injected Voyage client.
+        Initialize ZillizSearchTool with injected clients.
         
         Args:
-            voyage_client: Pre-configured Voyage AI client
+            voyage_client: Voyage AI client for embeddings
+            milvus_client: Milvus/Zilliz client for vector database
+            reranker_client: Optional FlagReranker for result reranking
         """
         self.voyage_client = voyage_client
-        
-        # Milvus client created internally (same company as Zilliz)
         self.zilliz_client = milvus_client
+        self.reranker = reranker
+        
+        # Log reranker status
+        if self.reranker:
+            print("ZillizSearchTool initialized WITH reranking")
+        else:
+            print("ZillizSearchTool initialized WITHOUT reranking")
         
               
         # Create logs directory if it doesn't exist
@@ -125,6 +134,11 @@ class ZillizSearchTool:
         The vector search operates on embeddings generated from enriched_text,
         ensuring semantic similarity includes metadata context.
         """
+        if RERANKER_ENABLED and self.reranker:
+            limit_r = 2 * limit  # Fetch more for reranking
+        else:
+            limit_r = limit        
+
         try:
             # Generate embedding for the query
             query_embedding = self.voyage_client.embed(
@@ -143,7 +157,7 @@ class ZillizSearchTool:
             # Perform the search
             search_params = {
                 "data": [query_embedding],
-                "limit": limit,
+                "limit": limit_r,
                 "output_fields": output_fields,
                 "anns_field": "vector",  # add: explicit vector field
                 "search_params": {"metric_type": "COSINE", "params": {"ef": 256}},  # add: HNSW recall
@@ -177,6 +191,10 @@ class ZillizSearchTool:
                         "semantic_keywords": entity.get("semantic_keywords", []),
                         "score": 1.0 -  hit.get("distance", 0.0)
                     })
+
+                    # RERANKING HERE (before returning):
+                    if RERANKER_ENABLED and self.reranker:
+                        formatted_results = self._rerank_results(query, formatted_results, top_k=limit)
             
             return formatted_results
             
@@ -189,7 +207,7 @@ class ZillizSearchTool:
                 search_results = self.zilliz_client.search(
                     collection_name=collection_name,
                     data=[query_embedding],
-                    limit=limit,
+                    limit=limit_r,
                     output_fields=["text", "chunk_summary", "filename"],
                     anns_field= "vector",  # add: explicit vector field
                     search_params= {"metric_type": "COSINE", "params": {"ef": 256}},  # add: HNSW recall
@@ -205,86 +223,28 @@ class ZillizSearchTool:
                             "filename": entity.get("filename", ""),
                             "score": 1.0 - hit.get("distance", 0.0)
                         })
-                
+                        
+                # RERANKING HERE (before returning):
+                if RERANKER_ENABLED and self.reranker:
+                    formatted_results = self._rerank_results(query, formatted_results, top_k=limit)
+
                 return formatted_results
             except Exception as fallback_error:
                 print(f"Fallback search also failed: {fallback_error}")
                 return []
-
-    
-    def hybrid_search_chunks(self, collection_name: str, query: str, limit: int = 5,
-                            metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Manual Hybrid search combining vector similarity and keyword matching on enriched content.
-        
-        Keyword matching via TEXT_MATCH searches the enriched_text field, which includes:
-        - Original chunk text
-        - Chunk summary
-        - Section context
-        - Document summary
-        - Semantic keywords
-        
-        This creates consistency: both vector and keyword search operate on the same
-        enriched content, providing complementary retrieval methods over full context.
-        
-        Note: Keywords can match metadata even if not in chunk text itself - generally
-        desirable for policy analysis where document context matters.
-        """
-        # Extract potential keywords from the query
-        keywords = [word for word in query.split() if len(word) > 3 and word not in ['that', 'this', 'with', 'from', 'have', 'were', 'they', 'their']]
-        
-        # Create text match filters for all searchable fields
-        text_match_filters = []
-        for keyword in keywords:
-            text_match_filters.append(f'TEXT_MATCH(text, "{keyword}")')
-            text_match_filters.append(f'TEXT_MATCH(chunk_summary, "{keyword}")')
-            text_match_filters.append(f'TEXT_MATCH(section_title, "{keyword}")')
-            text_match_filters.append(f'TEXT_MATCH(keywords_text, "{keyword}")')  # NEW: include keywords
-        
-        # Combine with metadata filter if provided
-        combined_filter = " OR ".join(text_match_filters)
-        if metadata_filter:
-            if combined_filter:
-                combined_filter = f"({combined_filter}) AND ({metadata_filter})"
-            else:
-                combined_filter = metadata_filter
-        
-        try:
-            # First attempt: try with TEXT_MATCH filtering
-            if combined_filter:
-                print("Attempting hybrid search with TEXT_MATCH...")
-                results = self.search_chunks(
-                    collection_name=collection_name,
-                    query=query,
-                    limit=limit,
-                    metadata_filter=combined_filter
-                )
-                
-                # If we got results, return them
-                if results:
-                    print(f"Found {len(results)} results with hybrid search")
-                    return results
-            
-        except Exception as e:
-            if "text match operation" in str(e) or "TEXT_MATCH" in str(e):
-                print("TEXT_MATCH not supported, falling back to semantic search...")
-            else:
-                print(f"Hybrid search error: {e}")
-        
-        # Fallback: standard semantic search
-        print("Using semantic search fallback...")
-        return self.search_chunks(
-            collection_name=collection_name,
-            query=query,
-            limit=limit
-        )
-    
+   
     def hybrid_search_chunks_API(self, collection_name: str, query: str, limit: int = 5,
                                 metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Hybrid search using the Zilliz hybrid search API with automatic fusion of vector and BM25 results.
         Uses the BM25 function's sparse vectors for keyword matching.
         """
+
+        if RERANKER_ENABLED and self.reranker:
+            limit_r = 2 * limit  # Fetch more for reranking
+        else:
+            limit_r = limit
+
         # Generate query embedding using YOUR SAME METHOD
         query_embedding = self.voyage_client.embed(
             [query],
@@ -323,7 +283,7 @@ class ZillizSearchTool:
             collection_name=collection_name,
             reqs=[vector_req, bm25_req],
             ranker=RRFRanker(k=60),   # Can also use WeightedRanker which gives results comparable to cosine similarity
-            limit=limit,
+            limit=limit_r,
             output_fields=[
                 "text", "enriched_text", "chunk_summary", "section_title", 
                 "document_summary", "filename", "file_type", "section_context", 
@@ -351,16 +311,66 @@ class ZillizSearchTool:
                 "semantic_keywords": entity.get("semantic_keywords", []),
                 "score": hit.distance  # these are raw RRF scores
             })
+        # RERANKING HERE (before returning):
+        if RERANKER_ENABLED and self.reranker:
+            formatted_results = self._rerank_results(query, formatted_results, top_k=limit)
         
         return formatted_results
     
+    def _rerank_results(self, query: str, results: List[Dict[str, Any]], 
+                   top_k: int = None) -> List[Dict[str, Any]]:
+        """
+        Rerank search results using FlagReranker.
+        
+        Args:
+            query: Original search query
+            results: List of search results with 'text' or 'enriched_text' fields
+            top_k: Number of top results to return (default: keep all)
+            
+        Returns:
+            Reranked list of results with updated scores
+        """
+        if not self.reranker or not results:
+            return results
+        
+        try:
+            # Prepare query-document pairs for reranker
+            # Use enriched_text if available, otherwise fall back to text
+            pairs = [
+                [query, result.get('enriched_text') or result.get('text', '')]
+                for result in results
+            ]
+            
+            # Get reranking scores (takes ~20-40ms for 20 candidates on CPU)
+            rerank_scores = self.reranker.compute_score(pairs)
+            
+            # Add rerank scores to results
+            for i, result in enumerate(results):
+                result['rerank_score'] = float(rerank_scores[i])
+                result['original_score'] = result.get('score', 0.0)
+            
+            # Sort by rerank score (descending)
+            reranked = sorted(results, key=lambda x: x['rerank_score'], reverse=True)
+            
+            # Return top_k if specified
+            if top_k:
+                reranked = reranked[:top_k]
+            
+            return reranked
+            
+        except Exception as e:
+            print(f"Reranking failed: {e}. Returning original results.")
+            return results
+    
 def example_usage():
-    # Initialize the search tool with both Voyage and OpenAI API keys
-    search_tool = ZillizSearchTool(
-        voyage_api_key=VOYAGE_API_KEY,
-        zilliz_uri=ZILLIZ_CLOUD_URI,
-        zilliz_token=ZILLIZ_CLOUD_TOKEN
-    )
+    # Initialize the search tool with both Voyage, Milvus and Reranker clients.
+
+    voyage_client = client_factory.create_voyage_client()
+    milvus_client = client_factory.create_milvus_client()
+    reranker=None
+    reranker = client_factory.create_reranker_client() if RERANKER_ENABLED else None
+    search_tool = ZillizSearchTool(voyage_client, milvus_client, reranker)
+    
     
     try:
         # Example searches using the new collection
@@ -432,7 +442,7 @@ def main() -> None:
     """Command-line interface for running semantic or hybrid searches.
     
     Usage:
-        python Zilliz_src/zilliz_search.py "what are reproductive health benefits" h --limit 10 --filter "file_type == 'pdf'"
+        python Zilliz_src/search.py "what are reproductive health benefits" h --limit 10 --filter "file_type == 'pdf'"
     """
 
 
@@ -448,8 +458,9 @@ def main() -> None:
 
     voyage_client = client_factory.create_voyage_client()
     milvus_client = client_factory.create_milvus_client()
-
-    search_tool = ZillizSearchTool(voyage_client, milvus_client)
+    reranker=None
+    #reranker = client_factory.create_reranker_client() if RERANKER_ENABLED else None
+    search_tool = ZillizSearchTool(voyage_client, milvus_client, reranker)
         
     if args.mode == "h":
         results = search_tool.hybrid_search_chunks_API(

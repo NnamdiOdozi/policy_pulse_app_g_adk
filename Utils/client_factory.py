@@ -37,3 +37,34 @@ def create_openai_client(model: str = "gpt-4o-mini"):
         request_timeout=120,
         max_retries=5
     )
+# ADD THIS NEW FUNCTION:
+def create_reranker_client():
+    """
+    Create and return a FlagEmbedding reranker client.
+    Only creates if RERANKER_ENABLED=true in environment.
+    
+    Returns:
+        FlagReranker instance or None if disabled
+    """
+    reranker_enabled = os.getenv("RERANKER_ENABLED", "false").lower() == "true"
+    
+    if not reranker_enabled:
+        return None
+    
+    try:
+        from FlagEmbedding import FlagReranker
+        
+        # Detect if GPU is available
+        use_gpu = False #torch.cuda.is_available()
+        
+        reranker = FlagReranker(
+            'BAAI/bge-reranker-v2-m3',
+            use_fp16=use_gpu,  # Only use fp16 on GPU
+            device='cuda' if use_gpu else 'cpu'
+        )
+        
+        print(f"Reranker initialized on {'GPU' if use_gpu else 'CPU'}")
+        return reranker
+    except ImportError:
+        print("Warning: FlagEmbedding not installed. Reranking disabled.")
+        return None
