@@ -400,7 +400,7 @@ def search_with_serpapi(query: str, max_results: int = 5) -> Dict[str, Any]:
                 "date": item.get("date", None)
             })
         
-        # Include knowledge panel if available
+        # Include knowledge panel if available. I need to Grok what this knowledge panel is all about
         knowledge_graph = data.get("knowledge_graph", {})
         answer_box = data.get("answer_box", {})
         
@@ -435,10 +435,9 @@ def _retrieve_context_zilliz(query: str,
     Retrieve relevant document chunks using hybrid search with semantic fallback.
     
     Uses a two-step approach:
-    1. HYBRID SEARCH (default): Combines TEXT_MATCH keyword filtering with semantic ranking
-       - Extracts keywords from query (e.g., "UK", "compliance", "miscarriage")
-       - Filters chunks containing these keywords in text, summaries, titles, or semantic_keywords
-       - Ranks filtered results by semantic similarity
+    1. HYBRID SEARCH (default): Combines bm25 text search with semantic ranking
+       - Runs both semantic search on the embedding vectors and bm25 text search on the enriched_text field. We are not currently using any metadata filters but these could be added in future
+       - Uses a ranking approach eg RRF or WeightedRanker to combine results
     2. SEMANTIC FALLBACK: If hybrid returns no results, uses pure vector similarity search
     
     Args:
@@ -460,12 +459,12 @@ def _retrieve_context_zilliz(query: str,
         - content: Chunk summary (LLM-generated, more relevant than raw text)
         - full_text: Raw chunk text truncated to 500 chars (for detailed analysis)
         - source: Filename
-        - score: Similarity score (higher = more similar, 0.0-1.0 range)
+        - score: Similarity or RRF score for hybrid search (higher = more similar, 0.0-1.0 range)
         - section_title: Document section this chunk belongs to
         - section_context: Additional section context information
         - document_summary: Overall document summary
         - file_type: Document type (pdf, docx, pptx, etc.)
-        - semantic_keywords: Top 5 most frequent keywords from this chunk
+        - semantic_keywords: Top 3/5 most frequent keywords from this chunk
     """
     
     # Set default collection name
@@ -506,7 +505,7 @@ def _retrieve_context_zilliz(query: str,
         # Format results with rich metadata
         chunks = []
         for i, result in enumerate(results, 1):
-            # I've commented a lot of the chunk fields below because the enriched_text field now contains the original text plus all of the other fields.
+            # I've commented out a lot of the chunk fields below because the enriched_text field now contains the original text plus all of the other fields.
             # for the User display we will want to show the raw chunk text using something like user_display = result["text"][2000] pulled form theVector DB search or alternativley from another chunk store eg SQL, MongoDB et, and then the doc ref would likely be an S3 bucket blob URL
             chunk = {
                 "position": i,

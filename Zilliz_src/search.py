@@ -182,6 +182,7 @@ class ZillizSearchTool:
                     entity = hit["entity"]
                     formatted_results.append({
                         "text": entity.get("text", ""),
+                        "enriched_text": entity.get("enriched_text", ""),
                         "chunk_summary": entity.get("chunk_summary", ""),
                         "section_title": entity.get("section_title", ""),
                         "document_summary": entity.get("document_summary", ""),
@@ -192,12 +193,6 @@ class ZillizSearchTool:
                         "score": 1.0 -  hit.get("distance", 0.0)
                     })
 
-                    # RERANKING HERE (before returning):
-                    if RERANKER_ENABLED and self.reranker:
-                        formatted_results = self._rerank_results(query, formatted_results, top_k=limit)
-            
-            return formatted_results
-            
         except Exception as e:
             print(f"Error in search_chunks: {e}")
             print("Trying basic search without filtering...")
@@ -208,7 +203,7 @@ class ZillizSearchTool:
                     collection_name=collection_name,
                     data=[query_embedding],
                     limit=limit_r,
-                    output_fields=["text", "chunk_summary", "filename"],
+                    output_fields=output_fields,
                     anns_field= "vector",  # add: explicit vector field
                     search_params= {"metric_type": "COSINE", "params": {"ef": 256}},  # add: HNSW recall
                 )
@@ -218,20 +213,27 @@ class ZillizSearchTool:
                     for hit in search_results[0]:
                         entity = hit["entity"]
                         formatted_results.append({
-                            "text": entity.get("text", ""),
-                            "chunk_summary": entity.get("chunk_summary", ""),
-                            "filename": entity.get("filename", ""),
-                            "score": 1.0 - hit.get("distance", 0.0)
-                        })
-                        
-                # RERANKING HERE (before returning):
-                if RERANKER_ENABLED and self.reranker:
-                    formatted_results = self._rerank_results(query, formatted_results, top_k=limit)
-
-                return formatted_results
+                        "text": entity.get("text", ""),
+                        "enriched_text": entity.get("enriched_text", ""),
+                        "chunk_summary": entity.get("chunk_summary", ""),
+                        "section_title": entity.get("section_title", ""),
+                        "document_summary": entity.get("document_summary", ""),
+                        "filename": entity.get("filename", ""),
+                        "file_type": entity.get("file_type", ""),
+                        "section_context": entity.get("section_context", ""),
+                        "semantic_keywords": entity.get("semantic_keywords", []),
+                        "score": 1.0 -  hit.get("distance", 0.0)
+                    })
+            
             except Exception as fallback_error:
                 print(f"Fallback search also failed: {fallback_error}")
                 return []
+            
+        # RERANKING HERE (before returning):
+        if RERANKER_ENABLED and self.reranker:
+            formatted_results = self._rerank_results(query, formatted_results, top_k=limit)
+
+        return formatted_results
    
     def hybrid_search_chunks_API(self, collection_name: str, query: str, limit: int = 5,
                                 metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -378,7 +380,6 @@ def example_usage():
     #reranker=None
     reranker = client_factory.create_reranker_client() if RERANKER_ENABLED else None
     search_tool = ZillizSearchTool(voyage_client, milvus_client, reranker)
-    
     
     try:
         # Example searches using the new collection
