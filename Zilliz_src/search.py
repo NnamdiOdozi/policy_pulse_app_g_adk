@@ -133,6 +133,8 @@ class ZillizSearchTool:
         
         The vector search operates on embeddings generated from enriched_text,
         ensuring semantic similarity includes metadata context.
+
+
         """
         if RERANKER_ENABLED and self.reranker:
             limit_r = 2 * limit  # Fetch more for reranking
@@ -238,8 +240,10 @@ class ZillizSearchTool:
     def hybrid_search_chunks_API(self, collection_name: str, query: str, limit: int = 5,
                                 metadata_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Hybrid search using the Zilliz hybrid search API with automatic fusion of vector and BM25 results.
+        Hybrid search using the Zilliz hybrid search API with automatic fusion (RRF) of vector and BM25 results.
         Uses the BM25 function's sparse vectors for keyword matching.
+        Note that the RRF scores are much lower (~0.008-0.033 range) than cosine similarity scores or the reranker scores and so are not directly comparable.
+
         """
 
         if RERANKER_ENABLED and self.reranker:
@@ -449,28 +453,35 @@ def example_usage():
 
 def main() -> None:
     """Command-line interface for running semantic or hybrid searches.
-    
+
     Usage:
         python Zilliz_src/search.py "what are reproductive health benefits" h --limit 10 --filter "file_type == 'pdf'"
+        python Zilliz_src/search.py "maternity leave" s --limit 5
+        python Zilliz_src/search.py "fertility benefits" h --limit 5 --verbose
     """
-
 
     parser = argparse.ArgumentParser(
         description="Run semantic (s) or hybrid (h) searches against the Zilliz collection."
     )
     parser.add_argument("query", help="Search query to execute. Wrap in quotes to preserve spaces.")
-    parser.add_argument("mode", nargs="?", choices=["s", "h"], default="h", help="Search mode: 's' for semantic, 'h' for hybrid (default).")
-    parser.add_argument("--limit", type=int, default=5, help="Number of results to return (default: 5).")
-    parser.add_argument("--filter", dest="metadata_filter", help="Optional metadata filter expression to apply to the search.")
+    parser.add_argument("mode", nargs="?", choices=["s", "h"], default="h", 
+                       help="Search mode: 's' for semantic, 'h' for hybrid (default).")
+    parser.add_argument("--limit", type=int, default=5, 
+                       help="Number of results to return (default: 5).")
+    parser.add_argument("--filter", dest="metadata_filter", 
+                       help="Optional metadata filter expression to apply to the search.")
+    parser.add_argument("--verbose", action="store_true", 
+                       help="Show additional details like all keywords and section context.")
 
     args = parser.parse_args()
 
+    # Initialize clients
     voyage_client = client_factory.create_voyage_client()
     milvus_client = client_factory.create_milvus_client()
-    #reranker=None
     reranker = client_factory.create_reranker_client() if RERANKER_ENABLED else None
     search_tool = ZillizSearchTool(voyage_client, milvus_client, reranker)
-        
+    
+    # Execute search based on mode
     if args.mode == "h":
         results = search_tool.hybrid_search_chunks_API(
             collection_name=COLLECTION_NAME,
@@ -488,22 +499,66 @@ def main() -> None:
         )
         search_type = "Semantic"
 
-    print(f"\n{search_type} search results for query: '{args.query}'\n")
+    # Print header with reranking status
+    rerank_status = " (WITH reranking)" if RERANKER_ENABLED and reranker else ""
+    print(f"\n{'='*70}")
+    print(f"{search_type} Search Results{rerank_status}")
+    print(f"Query: '{args.query}'")
+    print(f"Results: {len(results)}/{args.limit}")
+    print(f"{'='*70}\n")
+    
     if not results:
         print("No results found.")
         return
 
+    # Print results
     for index, result in enumerate(results, start=1):
         print(f"Result {index}:")
-        print(f"  Chunk summary: {result.get('chunk_summary', '')}")
-        print(f"  Section: {result.get('section_title', '')}")
-        print(f"  Document: {result.get('filename', '')}")
-        if result.get("semantic_keywords"):
-            keywords_preview = ", ".join(result["semantic_keywords"][:5])
-            print(f"  Keywords: {keywords_preview}")
-        print(f"  Score: {result.get('score', 0.0):.4f}")
-        print("---")
+        print(f"  Summary: {result.get('chunk_summary', 'N/A')}")
+        
+        # Section and document info
+        section = result.get('section_title', '')
+        if section:
+            print(f"  Section: {section}")
+        print(f"  Document: {result.get('filename', 'N/A')}")
+        
+        # Keywords (first 5 only unless verbose)
+        keywords = result.get("semantic_keywords", [])
+        if keywords:
+            keywords_count = len(keywords) if args.verbose else min(5, len(keywords))
+            keywords_display = ", ".join(keywords[:keywords_count])
+            keywords_suffix = f" (showing {keywords_count}/{len(keywords)})" if len(keywords) > keywords_count else ""
+            print(f"  Keywords: {keywords_display}{keywords_suffix}")
+        
+        # Score display - handle reranking appropriately
+        if RERANKER_ENABLED and reranker and 'rerank_score' in result:
+            # When reranked, show BOTH scores with clear labels
+            print(f"  Rerank Score: {result.get('rerank_score', 0.0):.4f} (relevance)") #rerank score means after reranking
+            print(f"  Retrieval Score: {result.get('score', 0.0):.4f} (original)") # score here means before reranking and could be either semantic similarity (cosine) score or the RRF score (values much lower than for cosine metric) in the case of hybrid search
+        else:
+            # When not reranked, show only retrieval score
+            print(f"  Score: {result.get('score', 0.0):.4f}")
+        
+        # Verbose mode: show additional fields
+        if args.verbose:
+            file_type = result.get('file_type', '')
+            if file_type:
+                print(f"  File Type: {file_type}")
+            
+            section_context = result.get('section_context', '')
+            if section_context:
+                # Truncate long context
+                context_preview = section_context[:200] + "..." if len(section_context) > 200 else section_context
+                print(f"  Context: {context_preview}")
+        
+        print(f"{'-'*70}\n")
+    
+    # Footer
+    print(f"{'='*70}")
+    if RERANKER_ENABLED and reranker:
+        print("Note: Results are reordered by relevance (rerank score), not retrieval score.")
+    print(f"{'='*70}\n")
+
 
 if __name__ == "__main__":
     main()
-    

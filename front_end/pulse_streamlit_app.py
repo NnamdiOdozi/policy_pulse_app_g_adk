@@ -1,6 +1,4 @@
 import streamlit as st
-
-
 import asyncio
 import sys
 import os
@@ -9,6 +7,16 @@ from datetime import datetime
 import logging
 
 import re
+
+from auth import authenticate_user, create_user
+from session_utils import get_user_conversations, save_conversation, create_new_session, get_conversation_messages, delete_conversation
+
+
+from document_processor import extract_text_from_upload, summarize_document_if_needed
+from template_manager import PolicyTemplateManager
+from dynamic_sections import generate_dynamic_template
+from word_generator import generate_policy_word_doc
+
 
 def format_sources_block(text: str) -> str:
     """Format sources section with proper markdown bullets"""
@@ -81,17 +89,7 @@ st.set_page_config(
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from auth import authenticate_user, create_user, hash_password
-from session_utils import get_user_conversations, save_conversation, create_new_session, get_conversation_messages, delete_conversation
-from agents.policy_pulse_agent.agent import root_agent, runner, session_service
-from google.genai import types
 
-# NEW IMPORTS - Add these for the enhanced functionality
-from document_processor import extract_text_from_upload, summarize_document_if_needed
-from template_manager import PolicyTemplateManager
-from dynamic_sections import generate_dynamic_template
-from word_generator import generate_policy_word_doc
-import re
 
 def show_landing_page():
     """Display the landing page"""
@@ -264,27 +262,30 @@ def load_conversation(session_id: str):
     st.rerun()
 
 async def get_agent_response(user_message):
-    """Get response from the agent"""
+    """Get response from agent with AgentOps tracking."""
+    # Lazy import to avoid circular dependencies
+    from agents.policy_pulse_agent.agent import run_agent_with_logging
+    
+    response_text = ""
+    
     try:
-        message_content = types.Content(
-            role='user',
-            parts=[types.Part(text=user_message)]
-        )
-        
-        response_text = ""
-        async for event in runner.run_async(
-            user_id=st.session_state.user_id,
+        async for event in run_agent_with_logging(
+            message=user_message,
             session_id=st.session_state.current_session_id,
-            new_message=message_content
+            user_id=st.session_state.user_id,
+            tags=["streamlit", "frontend"]
         ):
             if hasattr(event, 'content') and hasattr(event.content, 'parts'):
                 for part in event.content.parts:
-                    if hasattr(part, 'text') and part.text is not None:
+                    if hasattr(part, 'text') and part.text is not None:  # ✅ Add None check
                         response_text += part.text
         
-        # Return only the text content, not a structured object
-        return response_text if response_text else "I'm sorry, I couldn't generate a response."
+        return response_text if response_text else "No response generated"
+        
     except Exception as e:
+        logger.error(f"Agent response error: {e}")
+        import traceback
+        traceback.print_exc()  # Print full traceback for debugging
         return f"Error: {str(e)}"
 
 # NEW FUNCTIONS - Add these for enhanced functionality

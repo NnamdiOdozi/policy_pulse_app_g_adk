@@ -248,6 +248,19 @@ INSTRUCTION = (
     " Never include URLs, sources, or references unless they were directly returned by search tools. All claims requiring factual verification must use an appropriate websearch tool first, and only include references from the tool response.\n"
     "Before making any factual claims about current information, you MUST use an appropriate websearch tool. If the search fails or returns no results, state clearly that you could not verify the information rather than providing potentially outdated information.\n"
 )
+
+# Helper function 
+def _content_to_text(msg: types.Content | str) -> str:
+    """Extract plain text from Content object or return string as-is."""
+    if isinstance(msg, str):
+        return msg.strip()
+    out = []
+    for p in getattr(msg, "parts", []) or []:
+        t = getattr(p, "text", None)
+        if t:
+            out.append(t)
+    return " ".join(out).strip()
+
 model="gemini-2.5-flash"
 #
 model_sonar=LiteLlm(
@@ -298,6 +311,89 @@ runner = Runner(
     agent = root_agent,
     
 )
+
+# =============================================================================
+# AGENTOPS-AWARE AGENT EXECUTION WRAPPER
+# =============================================================================
+
+async def run_agent_with_logging(
+    message: str | types.Content,  # Accept both!
+    session_id: str, 
+    user_id: str,
+    tags: list = None
+):
+    """
+    Execute agent with AgentOps session tracking.
+    
+    CRITICAL: This wrapper ensures every agent execution is tracked,
+    even if exceptions occur. Without this, AgentOps logs are incomplete.
+    
+    Args:
+        message: User input text
+        session_id: ADK session ID
+        user_id: User identifier
+        tags: Optional list of tags for this request
+        
+    Returns:
+        Async generator of ADK events (same as runner.run_async)
+    """
+    # Only create AgentOps session if enabled
+    ao_session = None
+    if agentops_enabled:
+        # Extract text for logging
+        msg_text = message if isinstance(message, str) else _content_to_text(message)
+        
+        request_tags = tags or []
+        request_tags.extend([
+            f"user:{user_id}", 
+            f"session:{session_id[:8]}",
+            f"msg_len:{len(msg_text)}"
+        ])
+        ao_session = agentops.start_session(tags=request_tags)
+        
+        ao_session.record(agentops.ActionEvent(
+            action_type="request_received",
+            params={"message_preview": msg_text[:100]},
+        ))
+    
+    try:
+        # Convert to Content if needed
+        if isinstance(message, str):
+            message_content = types.Content(
+                role='user',
+                parts=[types.Part(text=message)]
+            )
+        else:
+            message_content = message
+        
+        # Execute agent
+        async for event in runner.run_async(
+            user_id=user_id,
+            session_id=session_id,
+            new_message=message_content
+        ):
+            yield event
+        
+        if ao_session:
+            ao_session.end_session(end_state="Success")
+            
+    except Exception as e:
+        if ao_session:
+            ao_session.end_session(end_state="Fail")
+        raise
+
+
+# Helper function (add this near top of file if not already there)
+def _content_to_text(msg: types.Content | str) -> str:
+    """Extract plain text from Content object or return string as-is."""
+    if isinstance(msg, str):
+        return msg.strip()
+    out = []
+    for p in getattr(msg, "parts", []) or []:
+        t = getattr(p, "text", None)
+        if t:
+            out.append(t)
+    return " ".join(out).strip()
 
 # =============================================================================
 # CLI ENTRY POINT (for testing)
@@ -365,10 +461,11 @@ if __name__ == "__main__":
                 )
                 
                 # Use run_async with EXACT same parameters as session creation to run agent
-                async for event in runner.run_async(
-                    user_id=USER_ID,        # Must match session creation
-                    session_id=session_id,  # Must match session creation
-                    new_message=message
+                async for event in run_agent_with_logging(
+                    message=message,
+                    session_id=session_id,
+                    user_id=USER_ID,
+                    tags=["cli", "testing"]
                 ):
                     if hasattr(event, 'content') and hasattr(event.content, 'parts'):
                         for part in event.content.parts:

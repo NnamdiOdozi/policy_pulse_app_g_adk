@@ -7,6 +7,8 @@ source .venv/bin/activate
 uv pip compile pyproject.toml --output-file requirements.txt
 uv pip sync requirements.txt
 
+ uv pip show watchdog # to check what version of watchdog is installed
+
  python agents/policy_pulse_agent/agent.py
 
 # The official uv reference
