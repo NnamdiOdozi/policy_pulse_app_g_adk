@@ -317,43 +317,27 @@ runner = Runner(
 # =============================================================================
 
 async def run_agent_with_logging(
-    message: str | types.Content,  # Accept both!
+    message: str | types.Content,
     session_id: str, 
     user_id: str,
     tags: list = None
 ):
-    """
-    Execute agent with AgentOps session tracking.
-    
-    CRITICAL: This wrapper ensures every agent execution is tracked,
-    even if exceptions occur. Without this, AgentOps logs are incomplete.
-    
-    Args:
-        message: User input text
-        session_id: ADK session ID
-        user_id: User identifier
-        tags: Optional list of tags for this request
-        
-    Returns:
-        Async generator of ADK events (same as runner.run_async)
-    """
-    # Only create AgentOps session if enabled
+    """Execute agent with AgentOps event recording."""
     ao_session = None
     if agentops_enabled:
-        # Extract text for logging
         msg_text = message if isinstance(message, str) else _content_to_text(message)
         
         request_tags = tags or []
         request_tags.extend([
             f"user:{user_id}", 
             f"session:{session_id[:8]}",
-            f"msg_len:{len(msg_text)}"
         ])
         ao_session = agentops.start_session(tags=request_tags)
         
+        # ✅ CRITICAL: Record that request was received
         ao_session.record(agentops.ActionEvent(
-            action_type="request_received",
-            params={"message_preview": msg_text[:100]},
+            action_type="user_message_received",
+            params={"message_length": len(msg_text), "preview": msg_text[:100]},
         ))
     
     try:
@@ -366,34 +350,50 @@ async def run_agent_with_logging(
         else:
             message_content = message
         
-        # Execute agent
+        # ✅ CRITICAL: Record each event from the runner
+        event_count = 0
         async for event in runner.run_async(
             user_id=user_id,
             session_id=session_id,
             new_message=message_content
         ):
+            event_count += 1
+            
+            # Record the event to AgentOps
+            if ao_session:
+                # Determine event type
+                event_type = getattr(event, 'type', 'unknown')
+                
+                ao_session.record(agentops.ActionEvent(
+                    action_type=f"adk_{event_type}",
+                    params={
+                        "event_number": event_count,
+                        "has_content": hasattr(event, 'content'),
+                    }
+                ))
+            
             yield event
         
+        # ✅ Record completion
         if ao_session:
+            ao_session.record(agentops.ActionEvent(
+                action_type="agent_response_complete",
+                params={"total_events": event_count},
+                returns={"status": "success"}
+            ))
             ao_session.end_session(end_state="Success")
             
     except Exception as e:
         if ao_session:
+            ao_session.record(agentops.ErrorEvent(
+                error_type=type(e).__name__,
+                details=str(e)
+            ))
             ao_session.end_session(end_state="Fail")
         raise
 
 
-# Helper function (add this near top of file if not already there)
-def _content_to_text(msg: types.Content | str) -> str:
-    """Extract plain text from Content object or return string as-is."""
-    if isinstance(msg, str):
-        return msg.strip()
-    out = []
-    for p in getattr(msg, "parts", []) or []:
-        t = getattr(p, "text", None)
-        if t:
-            out.append(t)
-    return " ".join(out).strip()
+
 
 # =============================================================================
 # CLI ENTRY POINT (for testing)

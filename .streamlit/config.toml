@@ -1,3 +1,11 @@
 [server]
 fileWatcherType = "watchdog"
-folderWatchBlacklist = [".venv/**", "**/torch/**"]
+folderWatchBlacklist = [
+  ".venv",
+  "**\\.venv\\**",
+  ".venv\\**",
+  "**/torch/**",
+  "**\\torch\\**",
+  ".venv/Lib/site-packages/torch",
+  ".venv\\Lib\\site-packages\\torch"
+]
