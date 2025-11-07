@@ -2,300 +2,120 @@
 
 ## Overview
 
-This document outlines the architecture of the Zilliz embedding and retrieval system for the Policy Pulse application. The system uses Voyage AI for generating embeddings and Zilliz Cloud for vector storage and semantic search.
+Policy Pulse uses Voyage AI for dense embeddings and Zilliz Cloud (Milvus) as the vector database. The architecture separates
+document ingestion from query-time retrieval while sharing common clients via a factory module. Ingestion enriches every chunk
+with LLM-generated context, keywords, and file metadata before storing both raw and enriched text variants to support dual
+semantic/keyword search paths. Retrieval favors Zilliz's hybrid search pipeline with a semantic fallback, optional reranking,
+and response caching for agents.
 
-## Component Diagram
+## High-Level Flow
 
 ```mermaid
-graph TD
-    subgraph Indexing["📥 DOCUMENT INDEXING PIPELINE"]
-        A[**Start: Initialize ZillizMigrationTool and DocumentProcessor**] --> B{**For Each Document File**}
-        
-        B -->|Process| C[**Extract Text from PDF/DOCX/TXT/MD**]
-        
-        C --> D[**Split into Chunks: 1000 chars, 200 overlap**]
-        
-        D --> E[**Enrich Chunk with OpenAI Summary**]
-        
-        E --> F[**Extract Keywords and Metadata**]
-        
-        F -->|More Files?| B
-        
-        B -->|All Files Processed| G[**Create/Check Collection in Zilliz**]
-        
-        G --> H[**Build Enriched Text for Each Chunk**]
-        
-        H --> I[**Generate Embeddings in Batches: Voyage AI**]
-        
-        I --> J[**Batch Upsert ALL Chunks to Zilliz**]
-        
-        J --> K[**Zilliz Auto-Generates BM25 Sparse Vectors**]
-        
-        K --> L[**Load Collection for Search**]
-        
-        L --> M[**Complete: Collection Ready**]
+%%{init: {'flowchart': {'curve': 'linear', 'nodeSpacing': 50, 'rankSpacing': 80}, 'themeVariables': {'fontSize': '20px', 'nodeTextSize': '18px'}}}%%
+graph TB
+    subgraph Ingestion["📥 DOCUMENT INGESTION"]
+        A["File Watcher / Manual Indexing Run"] --> B["DocumentProcessor.extract_text_from_file"]
+        B --> C["RecursiveCharacterTextSplitter (1000/200)"]
+        C --> D["LLM summaries, context & keywords"]
+        D --> E["ZillizIndexer._create_enriched_embedding_text"]
+        E --> F["Voyage 3 Large embeddings (1024d) in batches"]
+        F --> G["Upsert dual text + vector fields to Zilliz"]
+        G --> H["Auto BM25 sparse vectors + HNSW index"]
     end
-    
-    M -.->|Collection Available| N
-    
+
     subgraph Query["🔍 QUERY-TIME RETRIEVAL"]
-        N[**User Query**] --> O[**Root Agent**]
-        
-        O --> P[**Zilliz Search Service**]
-        
-        P --> Q[**_retrieve_context_zilliz**]
-        
-        Q --> R[**get_zilliz_client**]
-        
-        R --> S[**ZillizMigrationTool**]
-        
-        S -->|API Calls| T[**Zilliz Cloud**]
-        S -->|API Calls| U[**Voyage AI**]
-        
-        T --> V[**Return Results to Agent**]
-        U --> V
+        Q["Agent Query"] --> R["TTLCache (30 min)"]
+        R --> S["ZillizSearchTool.hybrid_search_chunks_API"]
+        S --> T{"Reranker enabled?"}
+        T -->|Yes| U["Voyage reranker"]
+        T -->|No| V["Skip rerank"]
+        U --> W["Formatted chunks for agent"]
+        V --> W
+        S -.fallback.-> X["search_chunks (semantic)"]
     end
-    
-    style A fill:#e1f5e1
-    style B fill:#e3f2fd
-    style C fill:#fce4ec
-    style D fill:#fce4ec
-    style E fill:#fce4ec
-    style F fill:#fff9c4
-    style G fill:#fff4e6
-    style H fill:#fff9c4
-    style I fill:#f3e5f5
-    style J fill:#e0f2f1
-    style K fill:#e0f2f1
-    style L fill:#e0f2f1
-    style M fill:#e1f5e1
-    
-    style N fill:#e1f5e1
-    style O fill:#e3f2fd
-    style P fill:#e0f2f1
-    style Q fill:#e0f2f1
-    style R fill:#e0f2f1
-    style S fill:#e0f2f1
-    style T fill:#fff4e6
-    style U fill:#f3e5f5
-    style V fill:#e1f5e1    
+    H --> Q
 ```
 
-## Core Components
+## Core Modules
 
-### 1. ZillizMigrationTool
+- **`Zilliz_src/doc_processor.py` – `DocumentProcessor`**: extracts text across PDF/DOCX/PPTX/ODP/TXT/MD formats, chunks content
+  with a `RecursiveCharacterTextSplitter` (1000 size / 200 overlap), and uses an injected OpenAI client (`gpt-3.5-turbo` by
+default) to generate summaries, section context, and keywords while calculating SHA-256 hashes for change detection.【F:Zilliz_src/doc_processor.py†L1-L114】
+- **`Zilliz_src/indexer.py` – `ZillizIndexer`**: creates and manages Zilliz collections, generates enriched text, batches Voyage
+  embeddings (`voyage-3-large`, 1024 dimensions), and upserts chunks with full metadata into dual text fields (`text` for display,
+  `enriched_text` for search). It also persists processing logs and handles rename-safe metadata updates.【F:Zilliz_src/indexer.py†L1-L366】【F:Zilliz_src/indexer.py†L400-L644】
+- **`Zilliz_src/search.py` – `ZillizSearchTool`**: performs hybrid retrieval via Zilliz's API (combining ANN vector search and BM25
+  sparse search on `enriched_text`) with optional Voyage reranking, exposes semantic search, and standardizes output fields for
+  agents.【F:Zilliz_src/search.py†L1-L221】
+- **`Utils/client_factory.py`**: centralizes creation of Voyage, Milvus, OpenAI, and optional Voyage reranker clients so that
+  ingestion and retrieval share consistent credentials and retry settings.【F:Utils/client_factory.py†L1-L64】
+- **`Zilliz_src/file_watcher.py`**: monitors source directories, debounces events, uses stored file hashes to avoid reprocessing,
+  and coordinates reindexing or deletion through `ZillizIndexer` when files change, move, or are removed.【F:Zilliz_src/file_watcher.py†L1-L171】
+- **`agents/policy_pulse_agent/tools.py`**: exposes `_retrieve_context_zilliz` to agents, caching results in a shared
+  `TTLCache`, instantiating search clients via `get_zilliz_client`, and orchestrating hybrid search with semantic fallback.【F:agents/policy_pulse_agent/tools.py†L1-L111】【F:agents/policy_pulse_agent/tools.py†L432-L524】
 
-Central class managing vector database operations:
+## Document Ingestion Pipeline
 
-```python
-class ZillizMigrationTool:
-    def __init__(self, voyage_api_key, zilliz_uri, zilliz_token, openai_api_key=None):
-        self.voyage_client = voyageai.Client(api_key=voyage_api_key)
-        self.zilliz_client = MilvusClient(uri=zilliz_uri, token=zilliz_token)
-        # Basic document processor initialization
-        self.document_processor = None
-        if openai_api_key:
-            from zilliz_embedding import DocumentProcessor
-            self.document_processor = DocumentProcessor(openai_api_key)
-```
+1. **Source Monitoring & Change Detection**
+   - Continuous runs use `file_watcher.py`, which filters supported extensions and schedules work after a debounce window.
+   - For updates, it hashes the file, compares against stored `file_hash` metadata, and only reprocesses when content changes;
+     rename events trigger metadata updates without re-embedding when hashes match.【F:Zilliz_src/file_watcher.py†L32-L171】【F:Zilliz_src/indexer.py†L560-L644】
 
-### 2. DocumentProcessor
+2. **Extraction & Chunking**
+   - `DocumentProcessor.extract_text_from_file` routes to type-specific extractors with OCR fallback for scanned PDFs and support
+     for PPTX/ODP. The recursive splitter produces overlapping 1000-character chunks, enabling contextual overlap.【F:Zilliz_src/doc_processor.py†L25-L114】
 
-Handles document processing, chunking, and enrichment:
+3. **Metadata Enrichment**
+   - Each chunk carries summaries (`chunk_summary`, `document_summary`), section context, flattened keyword text for TEXT_MATCH,
+     original file metadata, and derived hashes/sizes to support lifecycle management.【F:Zilliz_src/indexer.py†L200-L324】【F:Zilliz_src/indexer.py†L420-L511】
 
-```python
-class DocumentProcessor:
-    def __init__(self, openai_api_key):
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=2000, chunk_overlap=400, length_function=len)
-        self.llm = ChatOpenAI(model="gpt-3.5-turbo", 
-                             temperature=0.0,
-                             api_key=openai_api_key)
-```
+4. **Enriched Text Construction**
+   - `_create_enriched_embedding_text` concatenates raw chunk text with metadata (summary, context, keywords, file info), creating
+     a search-focused payload that powers both embeddings and keyword search consistency.【F:Zilliz_src/indexer.py†L308-L338】
 
-### 3. Client Caching
+5. **Embedding Generation & Logging**
+   - Embeddings are produced in batches of 100 via Voyage's `voyage-3-large` model; errors fall back to zero vectors while logging
+     warnings. Each processed chunk is recorded with enrichment stats for auditability.【F:Zilliz_src/indexer.py†L366-L417】【F:Zilliz_src/indexer.py†L340-L404】
 
-Uses lru_cache for efficient client reuse:
+6. **Collection Schema & Indexing**
+   - `create_collection` defines VARCHAR `id` primary keys, display (`text`) and search (`enriched_text`) fields, BM25 sparse
+     vectors auto-generated from `enriched_text`, flattened `keywords_text`, structured metadata, and an HNSW index for the dense
+     vector field. Inverted indexes enable TEXT_MATCH across multiple fields.【F:Zilliz_src/indexer.py†L214-L306】
 
-```python
-@lru_cache(maxsize=1)
-def _get_cached_zilliz_client():
-    return ZillizMigrationTool(
-        voyage_api_key=os.getenv("VOYAGE_API_KEY"),
-        zilliz_uri=os.getenv("ZILLIZ_CLOUD_URI"),
-        zilliz_token=os.getenv("ZILLIZ_API_KEY"),
-        openai_api_key=os.getenv("OPENAI_API_KEY")
-    )
-```
+7. **Upsert & Lifecycle Operations**
+   - `insert_chunks` batches upserts to Zilliz, ensuring enriched text, embeddings, and metadata stay aligned. When files are
+     renamed, `update_chunks_metadata` reuses embeddings by only updating display metadata, keeping vector consistency.【F:Zilliz_src/indexer.py†L418-L644】
 
-## Document Processing Pipeline
+## Query-Time Retrieval
 
-### 1. Text Extraction
+1. **Client Caching**
+   - `get_zilliz_client` leverages an `lru_cache` to share Voyage, Milvus, and optional reranker clients across agent calls,
+     minimizing cold-start latency while respecting API key reuse.【F:agents/policy_pulse_agent/tools.py†L25-L63】
 
-Extracts content from various file formats:
+2. **Hybrid Search First**
+   - `_retrieve_context_zilliz` invokes `ZillizSearchTool.hybrid_search_chunks_API`, which issues a hybrid request combining ANN
+     vector search (COSINE on the `vector` field) and BM25 sparse search on `enriched_text`, optionally using Zilliz's RRF fusion
+     and reranking twice the requested results when a reranker is configured.【F:Zilliz_src/search.py†L112-L221】【F:agents/policy_pulse_agent/tools.py†L432-L493】
 
-```python
-def extract_text_from_file(self, file_path):
-    """Extract text from PDF, DOCX, TXT files"""
-    if file_path.suffix.lower() == '.pdf':
-        return self._extract_from_pdf(file_path)
-    elif file_path.suffix.lower() == '.docx':
-        return self._extract_from_docx(file_path)
-    # Other formats...
-```
+3. **Semantic Fallback**
+   - If hybrid results are empty, the tool calls `search_chunks`, generating a query embedding (input type `query`) and returning
+     cosine similarity scores alongside both text fields for downstream reasoning.【F:Zilliz_src/search.py†L132-L208】【F:agents/policy_pulse_agent/tools.py†L469-L501】
 
-### 2. Chunking
+4. **Optional Voyage Reranker**
+   - When `RERANKER_ENABLED` is true and a client is available, the search tool fetches double the desired hits, reranks them via
+     Voyage's reranker client, and trims to the requested limit, improving ordering for dense + sparse blends.【F:Utils/client_factory.py†L52-L87】【F:Zilliz_src/search.py†L65-L117】
 
-Splits documents into manageable, semantic chunks:
+5. **Response Formatting & Caching**
+   - Results are normalized to include `text`, `enriched_text`, source filename, and scores. `_retrieve_context_zilliz` caches
+     responses per query/collection key using a 30-minute TTLCache (max 50 entries) and flags cached responses for observability.【F:agents/policy_pulse_agent/tools.py†L432-L524】
 
-```python
-def process_file(self, file_path):
-    text = self.extract_text_from_file(file_path)
-    chunks = self.text_splitter.split_text(text)
-    # Process chunks with metadata...
-```
+## Operational Considerations
 
-### 3. Enrichment
-
-Adds valuable metadata to enhance search:
-
-```python
-# Add metadata to chunks
-chunk = {
-    "id": chunk_id,
-    "text": chunk_text,
-    "filename": file_path.name,
-    "section_title": section_title,
-    "document_summary": document_summary,
-    "semantic_keywords": self.extract_keywords(chunk_text)
-}
-```
-
-### 4. Vector Generation
-
-Creates embeddings for semantic search:
-
-```python
-def generate_embeddings(self, texts, show_progress=True):
-    batches = [texts[i:i + BATCH_SIZE] for i in range(0, len(texts), BATCH_SIZE)]
-    for batch in batches:
-        response = self.voyage_client.embed(
-            batch, model="voyage-3-large", input_type="document")
-        # Process response...
-```
-
-### 5. Indexing
-
-Stores documents and vectors in Zilliz:
-
-```python
-def insert_chunks(self, collection_name, chunks, show_progress=True):
-    # Prepare data with embeddings
-    enriched_texts = [self._create_enriched_embedding_text(c) for c in chunks]
-    embeddings = self.generate_embeddings(enriched_texts, show_progress)
-    # Insert into Zilliz...
-```
-
-## Search Capabilities
-
-### 1. Semantic Search
-
-Pure vector similarity search:
-
-```python
-def search_chunks(self, collection_name, query, limit=5, metadata_filter=None):
-    query_embedding = self.voyage_client.embed([query], model="voyage-3-large").embeddings[0]
-    # Perform search with embeddings...
-```
-
-### 2. Hybrid Search
-
-Combines vector search with keyword matching:
-
-```python
-def hybrid_search_chunks(self, collection_name, query, limit=5, metadata_filter=None):
-    # Extract keywords from query
-    keywords = [word for word in query.split() if len(word) > 3]
-    # Combine semantic and keyword search...
-```
-
-## Recommended Improvements
-
-### 1. Lazy Loading for Document Processor
-
-```python
-def __init__(self, voyage_api_key, zilliz_uri, zilliz_token, openai_api_key=None):
-    self.voyage_client = voyageai.Client(api_key=voyage_api_key)
-    self.zilliz_client = MilvusClient(uri=zilliz_uri, token=zilliz_token)
-    self._openai_api_key = openai_api_key
-    self._document_processor = None
-
-@property
-def document_processor(self):
-    """Lazy-loaded document processor - only created when needed."""
-    if self._document_processor is None and self._openai_api_key:
-        from zilliz_embedding import DocumentProcessor
-        self._document_processor = DocumentProcessor(self._openai_api_key)
-    return self._document_processor
-```
-
-Benefits:
-- Only loads document processor dependencies when needed
-- Search operations remain lightweight
-- Heavy dependencies (docx, pdfplumber, OpenAI) only loaded for ingestion
-
-### 2. Separation of Concerns
-
-Consider separating indexing and search functionalities:
-- `ZillizIndexer`: For document processing and indexing
-- `ZillizSearchClient`: Lightweight client for search only
-
-### 3. Enhanced Caching
-
-Improve the current caching mechanism:
-- Add semantic similarity for cache hits on similar queries
-- Implement monitoring of cache performance
-
-## Connection Management
-
-### API Clients
-
-- Both Zilliz and Voyage clients make stateless HTTP requests
-- No persistent connections maintained between operations
-- Services won't "shut down" clients after periods of inactivity
-
-### Error Handling
-
-The system implements several layers of resilience:
-
-```python
-try:
-    # Attempt hybrid search with TEXT_MATCH filtering
-    results = self.search_chunks(
-        collection_name=collection_name,
-        query=query,
-        limit=limit,
-        metadata_filter=combined_filter
-    )
-except Exception as e:
-    # Fallback to semantic search
-    results = self.search_chunks(
-        collection_name=collection_name,
-        query=query,
-        limit=limit
-    )
-```
-
-## Performance Considerations
-
-1. **Batch Processing**
-   - Documents are processed in batches to manage API rate limits
-   - Embeddings are generated in batches (100 chunks per batch)
-
-2. **Search Caching**
-   - TTLCache implements time-based expiration (30 minutes)
-   - Reduces repeated API calls for common queries
-
-3. **Rate Limiting**
-   - Time delays between batch API calls prevent throttling
-   - Error handling includes empty embedding fallbacks
+- **Batching & Rate Limiting**: Embedding generation sleeps between batches to avoid Voyage throttling; API failures record
+  structured warnings while preserving positional alignment of chunks and embeddings.【F:Zilliz_src/indexer.py†L366-L417】
+- **Logging & Auditing**: Each indexing run outputs JSON logs summarizing enrichment ratios, processed files, and chunk counts to
+  `embedding_logs/`, supporting post-run diagnostics.【F:Zilliz_src/indexer.py†L324-L369】
+- **Schema Trade-offs**: Maintaining separate `text` and `enriched_text` fields allows clean UI display while keeping search and
+  embeddings aligned; stale metadata within `enriched_text` is tolerated to avoid unnecessary re-embedding after renames.【F:Zilliz_src/indexer.py†L214-L338】【F:Zilliz_src/indexer.py†L560-L644】
+- **Automation Hooks**: The file watcher can run continuously for incremental updates, while manual indexing scripts reuse the
+  same clients, ensuring consistent embeddings between batch and real-time operations.【F:Zilliz_src/file_watcher.py†L1-L171】【F:Zilliz_src/indexer.py†L590-L644】
