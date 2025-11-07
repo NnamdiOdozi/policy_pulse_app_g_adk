@@ -11,7 +11,10 @@ and response caching for agents.
 ## High-Level Flow
 
 ```mermaid
-graph TD
+
+%%{init: {'flowchart': {'curve': 'linear', 'nodeSpacing': 50, 'rankSpacing': 80}, 'themeVariables': {'fontSize': '20px', 'nodeTextSize': '18px'}}}%%
+graph TB
+
     subgraph Ingestion["📥 DOCUMENT INGESTION"]
         A["File Watcher / Manual Indexing Run"] --> B["DocumentProcessor.extract_text_from_file"]
         B --> C["RecursiveCharacterTextSplitter (1000/200)"]
@@ -32,6 +35,7 @@ graph TD
         V --> W
         S -.fallback.-> X["search_chunks (semantic)"]
     end
+    H --> Q
 ```
 
 ## Core Modules
