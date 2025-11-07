@@ -28,7 +28,7 @@ def create_milvus_client():
         token=os.getenv("ZILLIZ_API_KEY")
     )
 
-def create_openai_client(model: str = "gpt-4o-mini"):
+def create_openai_client(model: str = "gpt-3.5-turbo"):
     """Create and return an OpenAI LangChain client."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
