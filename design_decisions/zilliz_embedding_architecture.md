@@ -11,27 +11,58 @@ and response caching for agents.
 ## High-Level Flow
 
 ```mermaid
-graph TD
-    subgraph Ingestion["📥 DOCUMENT INGESTION"]
-        A["File Watcher / Manual Indexing Run"] --> B["DocumentProcessor.extract_text_from_file"]
-        B --> C["RecursiveCharacterTextSplitter (1000/200)"]
-        C --> D["LLM summaries, context & keywords"]
-        D --> E["ZillizIndexer._create_enriched_embedding_text"]
-        E --> F["Voyage 3 Large embeddings (1024d) in batches"]
-        F --> G["Upsert dual text + vector fields to Zilliz"]
-        G --> H["Auto BM25 sparse vectors + HNSW index"]
+flowchart TB
+    subgraph Ingestion["<span style='color:#333333'>📥 DOCUMENT INGESTION</span>"]
+        direction TB
+        A["<span style='font-size:10px'><b>File Watcher / Manual Indexing Run</b><br/>Monitors source directories</span>"]
+        B["<span style='font-size:10px'><b>DocumentProcessor.extract_text_from_file</b><br/>Extracts text from PDF/DOCX/PPTX/ODP/TXT/MD</span>"]
+        C["<span style='font-size:10px'><b>RecursiveCharacterTextSplitter</b><br/>Chunk size: 1000 | Overlap: 200</span>"]
+        D["<span style='font-size:10px'><b>LLM Enrichment</b><br/>Generate summaries, context & keywords</span>"]
+        E["<span style='font-size:10px'><b>ZillizIndexer._create_enriched_embedding_text</b><br/>Concatenate raw text + metadata</span>"]
+        F["<span style='font-size:10px'><b>Voyage 3 Large</b><br/>Generate embeddings (1024d) in batches of 100</span>"]
+        G["<span style='font-size:10px'><b>Upsert to Zilliz</b><br/>Store dual text + vector fields</span>"]
+        H["<span style='font-size:10px'><b>Auto-indexing</b><br/>BM25 sparse vectors + HNSW index</span>"]
+
+        A --> B
+        B --> C
+        C --> D
+        D --> E
+        E --> F
+        F --> G
+        G --> H
     end
 
-    subgraph Query["🔍 QUERY-TIME RETRIEVAL"]
-        Q["Agent Query"] --> R["TTLCache (30 min)"]
-        R --> S["ZillizSearchTool.hybrid_search_chunks_API"]
-        S --> T{"Reranker enabled?"}
-        T -->|Yes| U["Voyage reranker"]
-        T -->|No| V["Skip rerank"]
-        U --> W["Formatted chunks for agent"]
+    style Ingestion fill:#e3f2fd,stroke:#1976d2,stroke-width:3px
+
+    Ingestion -.->|Documents indexed| Query
+
+    subgraph Query["<span style='color:#333333'>🔍 QUERY-TIME RETRIEVAL</span>"]
+        direction TB
+        Q["<b>Agent Query</b><br/>User question or request"]
+        R["<b>TTLCache Check</b><br/>30 min cache, max 50 entries"]
+        S["<b>ZillizSearchTool.hybrid_search_chunks_API</b><br/>ANN vector + BM25 sparse search"]
+        T{"<b>Reranker<br/>enabled?</b>"}
+        U["<b>Voyage Reranker</b><br/>Re-score and re-order results"]
+        V["<b>Skip Reranking</b><br/>Use raw scores"]
+        W["<b>Formatted Chunks</b><br/>Return to agent with metadata"]
+        X["<b>Semantic Fallback</b><br/>search_chunks (vector-only)"]
+
+        Q --> R
+        R --> S
+        S --> T
+        T -->|Yes| U
+        T -->|No| V
+        U --> W
         V --> W
-        S -.fallback.-> X["search_chunks (semantic)"]
+        S -.fallback if empty.-> X
+        X --> W
     end
+
+    style Query fill:#fff3e0,stroke:#f57c00,stroke-width:3px
+    style A fill:#bbdefb,stroke:#1976d2,stroke-width:2px
+    style H fill:#c8e6c9,stroke:#388e3c,stroke-width:2px
+    style Q fill:#ffe0b2,stroke:#f57c00,stroke-width:2px
+    style W fill:#c8e6c9,stroke:#388e3c,stroke-width:2px
 ```
 
 ## Core Modules
