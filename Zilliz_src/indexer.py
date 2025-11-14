@@ -62,7 +62,7 @@ VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY")
 ZILLIZ_CLOUD_URI = os.environ.get("ZILLIZ_CLOUD_URI")
 ZILLIZ_CLOUD_TOKEN = os.environ.get("ZILLIZ_API_KEY")
 BATCH_SIZE = 100  # Adjust based on your data and API limits
-COLLECTION_NAME =  "Nnamdi_test1" # os.getenv("ZILLIZ_COLLECTION_NAME")
+COLLECTION_NAME =  os.getenv("ZILLIZ_COLLECTION_NAME") # "Nnamdi_test1" # 
 EMBEDDING_DIM = 1024  # Voyage 3 Large dimension
 EMBEDDING_MODEL_NAME = "voyage-3-large"
 #DOCS_DIRECTORY = "Policy Pulse + AVE collab"  # Change to your actual directory path "Policy Pulse + AVE collab"
@@ -424,7 +424,7 @@ Source: {chunk.get('filename', '')}"""
         
         for batch in batches:
             try:
-                # Generate embeddings using Voyage 3 Large model
+                # Generate embeddings using embedding model
                 response = self.voyage_client.embed(
                     batch, 
                     model=EMBEDDING_MODEL_NAME, 
@@ -462,7 +462,7 @@ Source: {chunk.get('filename', '')}"""
         
         # Create collection if it doesn't exist
         if not self.zilliz_client.has_collection(collection_name):
-            self.create_collection(collection_name, 1024)
+            self.create_collection(collection_name, EMBEDDING_DIM)
         
         # Insert chunks into collection
         try:
@@ -520,7 +520,7 @@ Source: {chunk.get('filename', '')}"""
         """
         Insert chunks with enriched embeddings and logging.
         """
-        BATCH_SIZE = 100
+        #BATCH_SIZE = 100 # use module-level BATCH_SIZE
         
         # Create enriched texts for embedding
         print("Creating enriched embedding texts...")
