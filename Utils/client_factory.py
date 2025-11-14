@@ -28,7 +28,7 @@ def create_milvus_client():
         token=os.getenv("ZILLIZ_API_KEY")
     )
 
-def create_openai_client(model: str = "gpt-4o-mini"):
+def create_openai_client(model: str = "gpt-5-nano"):
     """Create and return an OpenAI LangChain client."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -36,10 +36,14 @@ def create_openai_client(model: str = "gpt-4o-mini"):
     
     return ChatOpenAI(
         model=model,
+        use_responses_api=True,
+        reasoning={"effort": "minimal"},
         temperature=0.0,
         api_key=api_key,
         request_timeout=120,
-        max_retries=5
+        max_retries=5,
+        verbosity="low",
+        max_completion_tokens=30
     )
 
 def create_reranker_client():

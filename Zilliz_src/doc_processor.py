@@ -260,7 +260,8 @@ class DocumentProcessor:
                 """
                 
                 response = self.llm.invoke(prompt)
-                summary = response.content.strip()
+                print(f"LLM response on attempt {attempt + 1}: {response}")  # Debug statement
+                summary = response.content[0]["text"].strip()
                 
                 # Ensure it has the label - summary format
                 if " - " not in summary:
@@ -350,7 +351,7 @@ class DocumentProcessor:
         if not document_summary:
             try:
                 doc_summary_prompt = f"Provide a concise 8-word summary of this document title: {file_path.stem}"
-                document_summary = self.llm.invoke(doc_summary_prompt).content.strip()
+                document_summary = self.llm.invoke(doc_summary_prompt).content[0]["text"].strip()
             except:
                 document_summary = f"{file_path.stem} policy document"
         
