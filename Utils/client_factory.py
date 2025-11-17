@@ -36,14 +36,14 @@ def create_openai_client(model: str = "gpt-5-nano"):
     
     return ChatOpenAI(
         model=model,
-        use_responses_api=True,
-        reasoning={"effort": "minimal"},
+        use_responses_api=True, # this api is newer than the completions api and allows finer control
+        reasoning={"effort": "minimal"}, # this is so as to save on reasoning tokens to reduce cost
+        verbosity="low",
         temperature=0.0,
         api_key=api_key,
         request_timeout=120,
         max_retries=5,
-        verbosity="low",
-        max_completion_tokens=30
+        max_completion_tokens=80
     )
 
 def create_reranker_client():

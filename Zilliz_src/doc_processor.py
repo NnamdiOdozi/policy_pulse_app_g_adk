@@ -249,7 +249,7 @@ class DocumentProcessor:
             try:
                 prompt = f"""
                 Create a concise label that captures the essence of this text chunk, followed by a dash, 
-                and then a summary sentence of no more than 12 words.
+                and then a summary sentence of no more than 20 words. If you would exceed this, wrap up the sentence cleanly instead of stopping mid-thought. Always end with a full stop. but do not force an awkward cut-off, instead let the sentence end naturally.
                 
                 Format example: "Employment Benefits - Outlines available health insurance and retirement options."
                 
