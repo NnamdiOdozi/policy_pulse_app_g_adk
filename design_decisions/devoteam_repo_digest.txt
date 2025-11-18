@@ -1,0 +1,6 @@
+Analysis complete! Output written to: digest.txt
+
+Summary:
+Directory: C:/Users/nnamd/CODING_PROJECTS/We_Are_Eden/Devoteam_agents
+Files analyzed: 1888
+

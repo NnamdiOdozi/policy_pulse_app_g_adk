@@ -83,14 +83,14 @@ def search_with_tavily_faq(query: str, max_results: int = 5, char_limit: int = 1
             "*.nhs.uk",       # UK healthcare resources
             "peppy.health",
             "getjuniper.co.uk",
-            "fertifa.com",  # Added missing comma
-            "fertilitynetworkuk.org",  # Added missing comma
-            "hertilityhealth.com",  # Added missing comma
-            "resolve.org",  # Simplified URL to domain
-            "fertilitymattersatwork.com",  # Added missing comma
-            "bournhall.co.uk",  # Added missing comma
-            "unfpa.org",  # Added missing comma
-            "gaiafamily.com"  # Simplified URL to domain
+            "fertifa.com",
+            "fertilitynetworkuk.org",
+            "hertilityhealth.com",
+            "resolve.org",
+            "fertilitymattersatwork.com",
+            "bournhall.co.uk",
+            "unfpa.org",
+            "gaiafamily.com"
     ]
 
     # Call the FAQ function with report-optimized parameters

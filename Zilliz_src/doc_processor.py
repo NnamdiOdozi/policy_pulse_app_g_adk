@@ -27,7 +27,7 @@ sys.path.insert(0, str(project_root))
 import Utils.client_factory as client_factory
 
 # Configuration
-LLM_SUMMARISER_MODEL = "gpt-3.5-turbo"  # Model for generating summaries. can switch up to gpt-4o-mini when doing evals
+# LLM_SUMMARISER_MODEL = "gpt-3.5-turbo"  # Model for generating summaries. can switch up to gpt-4o-mini when doing evals
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 
@@ -53,7 +53,7 @@ class DocumentProcessor:
         # Initialize LLM for generating summaries
         self.llm = openai_client
         
-        print(f"DocumentProcessor object initialized with LLM model {LLM_SUMMARISER_MODEL}")
+        print(f"DocumentProcessor object initialized with LLM model {openai_client.model_name}")
 
     def extract_text_from_file(self, file_path: Path) -> str:
         """
@@ -258,19 +258,35 @@ class DocumentProcessor:
                 
                 Label - Summary:
                 """
-                
-                response = self.llm.invoke(prompt)
+                if attempt == 0:
+                    response = self.llm.invoke(prompt)
+                else:
+                    # On retries, add a note to fix format and also attempt number
+                    retry_prompt = prompt + f"\n\n [retry {attempt}]. Please ensure the format is correct."
+                    response = self.llm.invoke(retry_prompt)
                 print(f"LLM response on attempt {attempt + 1}: {response}")  # Debug statement
                 summary = response.content[0]["text"].strip()
-                
-                # Ensure it has the label - summary format
+
+                # Normalize dash variants (em dash, en dash) to standard hyphen
+                summary = re.sub(r'\s*[–—]\s*', ' - ', summary)
+
+                # Validate format
                 if " - " not in summary:
-                    parts = summary.split(" ", 3)
-                    if len(parts) >= 3:
-                        summary = f"{parts[0]} {parts[1]} - {' '.join(parts[2:])}"
-                    else:
-                        summary = f"Section Summary - {summary}"
-                print(f"LLM attempt {attempt + 1} succeeded") # this is a debug statement
+                    print(f"Warning: LLM didn't include dash on attempt {attempt + 1}, retrying...")
+                    time.sleep(0.5)  # Brief pause before retry
+                    continue  # Retry instead of trying to fix
+
+                # Split and validate structure
+                parts = summary.split(" - ", 1)
+                label, _= parts[0].strip(), parts[1].strip()
+
+                # Validate label is reasonable (1-6 words)
+                if len(label.split()) >6 or len(label.split()) == 0:
+                    print(f"Warning: Invalid label '{label}' on attempt {attempt + 1}, retrying...")
+                    time.sleep(0.5)  # Brief pause before retry
+                    continue
+
+                print(f"LLM attempt {attempt + 1} succeeded")
                 return summary
                 
             except Exception as e:

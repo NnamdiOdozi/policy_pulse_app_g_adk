@@ -51,6 +51,9 @@ dependencies = [
     #"modelcontextprotocol>=0.1.0",
     "watchdog>=6.0.0",
     "litellm==1.78", # For reranking
+    "langchain-community>=0.3.25",
+    "feedparser>=6.0.12",
+    "gitingest>=0.3.1",
 ]
 
 [build-system]

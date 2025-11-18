@@ -7,6 +7,9 @@ import os
 import voyageai
 from pymilvus import MilvusClient
 from langchain_openai import ChatOpenAI
+from langchain.globals import set_llm_cache
+from langchain.cache import SQLiteCache
+
 
 from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
@@ -14,6 +17,9 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
 load_dotenv()
+# Set up LLM cache
+set_llm_cache(SQLiteCache("llm_cache.db"))
+
 
 def create_voyage_client():
     """Create and return a Voyage AI client."""
