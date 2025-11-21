@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 import argparse
 
 # For embeddings and vector database
-from pymilvus import  AnnSearchRequest, RRFRanker
+from pymilvus import  AnnSearchRequest, RRFRanker, Function, FunctionType
 
 # === PATH SETUP ===
 # UNUSUAL: We manipulate sys.path to allow imports from parent directories
@@ -284,11 +284,23 @@ class ZillizSearchTool:
         }
         bm25_req = AnnSearchRequest(**search_param_bm25)
         
+        rerank = Function(
+        name="weight",
+        input_field_names=[], # Must be an empty list
+        function_type=FunctionType.RERANK,
+        params={
+            "reranker": "weighted", 
+            "weights": [0.6, 0.4], #this weights need to go to top of module or into a config file
+            "norm_score": True  # Optional
+        }
+    )
+
         # Hybrid search with RRF fusion
         results = self.zilliz_client.hybrid_search(
             collection_name=collection_name,
             reqs=[vector_req, bm25_req],
-            ranker=RRFRanker(k=60),   # Can also use WeightedRanker which gives results comparable to cosine similarity
+            #ranker=RRFRanker(k=60),   # RRF is reverse rank fusion. Can also use WeightedRanker which gives results comparable to cosine similarity
+            ranker=rerank,  # Adjust weights for vector vs BM25. Weighting gives more interpretable scores comparable to cosine similarity
             limit=limit_r,
             output_fields=[
                 "text", "enriched_text", "chunk_summary", "section_title", 
@@ -534,7 +546,7 @@ def main() -> None:
         if RERANKER_ENABLED and reranker and 'rerank_score' in result:
             # When reranked, show BOTH scores with clear labels
             print(f"  Rerank Score: {result.get('rerank_score', 0.0):.4f} (relevance)") #rerank score means after reranking
-            print(f"  Retrieval Score: {result.get('score', 0.0):.4f} (original)") # score here means before reranking and could be either semantic similarity (cosine) score or the RRF score (values much lower than for cosine metric) in the case of hybrid search
+            print(f"  Retrieval Score: {result.get('score', 0.0):.4f} (original)") # score here means before reranking and could be either semantic similarity (cosine) score or the RRF/Weighted score (values much lower than for cosine metric) in the case of hybrid search
         else:
             # When not reranked, show only retrieval score
             print(f"  Score: {result.get('score', 0.0):.4f}")
